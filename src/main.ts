@@ -7,6 +7,7 @@ import { extractMetadata, withCrvExtension, type CarveMetadata } from './metadat
 import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { sourceToVisualDocument, visualHtmlToSource } from './wysiwyg'
+import { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, focusCell, isSimpleTable, parseTableSize, selectionCell, setTableCaption, toggleTableHeader } from './visual-table'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
 export type CarveViewMode = 'preview' | 'source' | 'split' | 'visual'
@@ -114,22 +115,107 @@ export class CarveView extends TextFileView {
       if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
       this.saveTimer = window.setTimeout(() => { this.requestSave(); this.saveTimer = null }, 250)
     }
+    const savedRange = (): Range | null => {
+      const selection = document.getSelection()
+      return selection?.rangeCount && surface.contains(selection.anchorNode) ? selection.getRangeAt(0).cloneRange() : null
+    }
+    const restoreRange = (range: Range | null): void => {
+      if (!range) return
+      const selection = document.getSelection(); selection?.removeAllRanges(); selection?.addRange(range)
+    }
+    const wrapSelection = (tag: 'code' | 'mark'): void => {
+      const range = savedRange()
+      if (!range || range.collapsed) { status.setText(`Select text before applying ${tag === 'code' ? 'inline code' : 'highlight'}.`); return }
+      const wrapper = document.createElement(tag)
+      try { range.surroundContents(wrapper) } catch { wrapper.append(range.extractContents()); range.insertNode(wrapper) }
+      const selection = document.getSelection(); selection?.removeAllRanges(); range.selectNodeContents(wrapper); selection?.addRange(range); sync()
+    }
     const commands: Array<[string, string, string, string?]> = [
-      ['B', 'Bold', 'bold'], ['I', 'Italic', 'italic'], ['<>', 'Code block', 'formatBlock', 'pre'],
-      ['H1', 'Heading 1', 'formatBlock', 'h1'], ['H2', 'Heading 2', 'formatBlock', 'h2'],
-      ['•', 'Bulleted list', 'insertUnorderedList'], ['1.', 'Numbered list', 'insertOrderedList'], ['❯', 'Block quote', 'formatBlock', 'blockquote'],
+      ['B', 'Bold', 'bold'], ['I', 'Italic', 'italic'], ['U', 'Underline', 'underline'], ['S', 'Strikethrough', 'strikeThrough'],
+      ['P', 'Paragraph', 'formatBlock', 'p'], ['H1', 'Heading 1', 'formatBlock', 'h1'], ['H2', 'Heading 2', 'formatBlock', 'h2'], ['H3', 'Heading 3', 'formatBlock', 'h3'], ['H4', 'Heading 4', 'formatBlock', 'h4'], ['H5', 'Heading 5', 'formatBlock', 'h5'], ['H6', 'Heading 6', 'formatBlock', 'h6'], ['<>', 'Code block', 'formatBlock', 'pre'],
+      ['x²', 'Superscript', 'superscript'], ['x₂', 'Subscript', 'subscript'], ['•', 'Bulleted list', 'insertUnorderedList'], ['1.', 'Numbered list', 'insertOrderedList'], ['❯', 'Block quote', 'formatBlock', 'blockquote'],
+      ['―', 'Horizontal rule', 'insertHorizontalRule'], ['Tx', 'Remove formatting', 'removeFormat'],
     ]
     for (const [caption, label, command, value] of commands) {
       const button = toolbar.createEl('button', { text: caption, attr: { type: 'button', 'aria-label': label, title: label } })
       button.addEventListener('mousedown', (event) => { event.preventDefault(); document.execCommand(command, false, value); surface.focus(); sync() })
     }
+    for (const [caption, label, tag] of [['`c`', 'Inline code', 'code'], ['=', 'Highlight', 'mark']] as const) {
+      const button = toolbar.createEl('button', { text: caption, attr: { type: 'button', title: label, 'aria-label': label } })
+      button.addEventListener('mousedown', (event) => { event.preventDefault(); wrapSelection(tag); surface.focus() })
+    }
     const link = toolbar.createEl('button', { text: 'Link', attr: { type: 'button', title: 'Create link' } })
-    link.addEventListener('mousedown', (event) => { event.preventDefault(); const url = window.prompt('Link URL'); if (url) document.execCommand('createLink', false, url); surface.focus(); sync() })
+    link.addEventListener('mousedown', (event) => { event.preventDefault(); const range = savedRange(); const url = window.prompt('Link URL'); restoreRange(range); if (url) document.execCommand('createLink', false, url); surface.focus(); sync() })
+    const unlink = toolbar.createEl('button', { text: 'Unlink', attr: { type: 'button', title: 'Remove link' } })
+    unlink.addEventListener('mousedown', (event) => { event.preventDefault(); document.execCommand('unlink'); surface.focus(); sync() })
     const undo = toolbar.createEl('button', { text: 'Undo', attr: { type: 'button' } })
     undo.addEventListener('mousedown', (event) => { event.preventDefault(); document.execCommand('undo'); surface.focus(); sync() })
+    const redo = toolbar.createEl('button', { text: 'Redo', attr: { type: 'button' } })
+    redo.addEventListener('mousedown', (event) => { event.preventDefault(); document.execCommand('redo'); surface.focus(); sync() })
+    const tableTools = toolbar.createDiv({ cls: 'carve-table-tools', attr: { role: 'group', 'aria-label': 'Table editing' } })
+    const tableHistory: string[] = []
+    const tableAction = (label: string, action: (cell: HTMLTableCellElement) => HTMLTableCellElement | null): void => {
+      const button = tableTools.createEl('button', { text: label, attr: { type: 'button', title: label } })
+      button.addEventListener('mousedown', (event) => {
+        event.preventDefault()
+        const cell = selectionCell(surface)
+        if (!cell) return
+        if (!isSimpleTable(cell.closest('table')!)) { status.setText('Merged cells are protected from structural table edits; use Source view.'); status.addClass('is-warning'); return }
+        tableHistory.push(surface.innerHTML)
+        focusCell(action(cell))
+        sync()
+        updateTableTools()
+      })
+    }
+    tableAction('↑ Row', (cell) => addTableRow(cell, 'before')?.cells[cell.cellIndex] ?? null)
+    tableAction('↓ Row', (cell) => addTableRow(cell, 'after')?.cells[cell.cellIndex] ?? null)
+    tableAction('← Col', (cell) => addTableColumn(cell, 'before')[(cell.parentElement as HTMLTableRowElement).rowIndex] ?? null)
+    tableAction('→ Col', (cell) => addTableColumn(cell, 'after')[(cell.parentElement as HTMLTableRowElement).rowIndex] ?? null)
+    tableAction('− Row', (cell) => { const next = (cell.parentElement?.nextElementSibling ?? cell.parentElement?.previousElementSibling)?.children[cell.cellIndex] as HTMLTableCellElement | undefined; return deleteTableRow(cell) ? next ?? null : null })
+    tableAction('− Col', (cell) => { const row = cell.parentElement as HTMLTableRowElement; const next = row.cells[cell.cellIndex + 1] ?? row.cells[cell.cellIndex - 1]; return deleteTableColumn(cell) ? next ?? null : null })
+    tableAction('Header', (cell) => toggleTableHeader(cell))
+    const caption = tableTools.createEl('button', { text: 'Caption', attr: { type: 'button' } })
+    caption.addEventListener('mousedown', (event) => {
+      event.preventDefault(); const cell = selectionCell(surface); const table = cell?.closest('table'); if (!table) return
+      const text = window.prompt('Table caption (leave empty to remove)', table.caption?.textContent ?? ''); if (text === null) return
+      tableHistory.push(surface.innerHTML); setTableCaption(table, text); sync(); updateTableTools()
+    })
+    const insertTable = toolbar.createEl('button', { text: 'Table', attr: { type: 'button', title: 'Insert 2 × 2 table' } })
+    insertTable.addEventListener('mousedown', (event) => {
+      event.preventDefault()
+      const range = savedRange()
+      const size = parseTableSize(window.prompt('Table size (rows × columns)', '2 × 2'))
+      if (!size) return
+      tableHistory.push(surface.innerHTML)
+      const table = createTable(...size)
+      const anchor = range?.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range?.commonAncestorContainer.parentElement
+      const block = anchor?.closest('p,h1,h2,h3,h4,h5,h6,blockquote,ul,ol,pre,table')
+      if (block && surface.contains(block)) block.after(table); else surface.append(table)
+      focusCell(table.rows[0]?.cells[0]); sync(); updateTableTools()
+    })
+    const undoTable = tableTools.createEl('button', { text: 'Undo table', attr: { type: 'button' } })
+    undoTable.addEventListener('mousedown', (event) => { event.preventDefault(); const html = tableHistory.pop(); if (html !== undefined) { surface.innerHTML = html; sync(); updateTableTools() } })
+    const updateTableTools = (): void => { tableTools.toggleClass('is-active', selectionCell(surface) !== null); undoTable.disabled = tableHistory.length === 0 }
     const revert = toolbar.createEl('button', { text: 'Revert source', cls: 'carve-visual-revert', attr: { type: 'button', title: 'Discard this visual editing session' } })
     revert.addEventListener('click', () => { this.source = this.visualOriginal; this.requestSave(); void this.draw() })
     surface.addEventListener('input', sync)
+    surface.addEventListener('click', updateTableTools)
+    surface.addEventListener('keyup', updateTableTools)
+    surface.addEventListener('keydown', (event) => {
+      if (event.key !== 'Tab') return
+      const cell = selectionCell(surface)
+      if (!cell) return
+      event.preventDefault()
+      const table = cell.closest('table')!
+      const cells = Array.from(table.querySelectorAll<HTMLTableCellElement>('th,td'))
+      const current = cells.indexOf(cell)
+      if (!event.shiftKey && current === cells.length - 1 && isSimpleTable(table)) {
+        tableHistory.push(surface.innerHTML)
+        const row = addTableRow(cell, 'after'); focusCell(row?.cells[0]); sync(); updateTableTools(); return
+      }
+      focusCell(cells[current + (event.shiftKey ? -1 : 1)] ?? cell)
+      updateTableTools()
+    })
     surface.addEventListener('paste', (event) => {
       const plain = event.clipboardData?.getData('text/plain')
       if (plain && !event.clipboardData?.getData('text/html')) { event.preventDefault(); document.execCommand('insertText', false, plain) }
@@ -141,6 +227,7 @@ export class CarveView extends TextFileView {
       status.addClass('is-warning')
       status.setText(`Experimental: editing will canonicalize this document${visual.diagnostics.length ? ` and reported ${visual.diagnostics.length} import warning(s)` : ''}. Frontmatter is preserved verbatim; use Source for unsupported constructs.`)
     } else status.setText('Experimental visual mode. Frontmatter is preserved verbatim.')
+    updateTableTools()
     surface.focus()
   }
 

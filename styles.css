@@ -24,10 +24,13 @@
 .carve-embed-error { color: var(--text-error); }
 .carve-document .admonition.callout { padding: 12px 12px 12px 24px; border: 0; border-radius: var(--callout-radius); background: rgba(var(--callout-color, var(--callout-default)), .1); }
 .carve-visual-shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; background: var(--background-primary); }
-.carve-visual-toolbar { display: flex; flex-wrap: wrap; gap: .25rem; padding: .45rem var(--file-margins); border-bottom: 1px solid var(--background-modifier-border); background: var(--background-secondary); }
+.carve-visual-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; padding: .45rem var(--file-margins); border-bottom: 1px solid var(--background-modifier-border); background: var(--background-secondary); }
 .carve-visual-toolbar button { min-width: 2rem; padding: .3rem .55rem; border: 1px solid transparent; border-radius: var(--button-radius); color: var(--text-muted); background: transparent; }
 .carve-visual-toolbar button:hover, .carve-visual-toolbar button:focus-visible { color: var(--text-normal); background: var(--background-modifier-hover); border-color: var(--background-modifier-border); }
 .carve-visual-toolbar .carve-visual-revert { margin-left: auto; color: var(--text-warning); }
+.carve-table-tools { display: none; order: 2; flex: 1 0 100%; align-items: center; gap: .15rem; padding-top: .35rem; border-top: 1px solid var(--background-modifier-border); }
+.carve-table-tools.is-active { display: flex; flex-wrap: wrap; }
+.carve-table-tools button { white-space: nowrap; }
 .carve-visual-editor { overflow: auto; padding: var(--file-margins); outline: none; caret-color: var(--text-accent); }
 .carve-visual-editor:focus { box-shadow: inset 0 0 0 1px var(--background-modifier-border-focus); }
 .carve-visual-editor > :first-child { margin-top: 0; }
