@@ -1,0 +1,24 @@
+{
+  "name": "obsidian-carve",
+  "version": "0.1.0",
+  "description": "Carve markup editor and reading view for Obsidian",
+  "license": "MIT",
+  "author": "Mark Scherer",
+  "type": "module",
+  "main": "main.js",
+  "scripts": {
+    "build": "node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit",
+    "test:all": "npm test && npm run typecheck && npm run build"
+  },
+  "dependencies": {"@markup-carve/carve": "^0.1.4"},
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "builtin-modules": "^5.0.0",
+    "esbuild": "^0.25.0",
+    "obsidian": "^1.13.1",
+    "typescript": "^5.9.0"
+  }
+}
