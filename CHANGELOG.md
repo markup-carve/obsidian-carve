@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an experimental visual editor backed by Carve's safe HTML importer, with
+  formatting controls, native undo, frontmatter preservation, conversion
+  warnings, and a source-revert escape hatch.
 - Replace the textarea with a highlighted CodeMirror 6 source editor.
 - Add live split editing, toolbar actions, and command-palette mode switching.
 - Add wikilinks, recursive embeds, YAML/TOML/JSON properties, tags, outline,

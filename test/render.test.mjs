@@ -3,6 +3,7 @@ import test from 'node:test'
 import { carveToHtml } from '@markup-carve/carve'
 import { extractMetadata, withCrvExtension } from '../dist-test/metadata.js'
 import { renderCarve, rewriteWikiSyntax } from '../dist-test/render.js'
+import { sourceToVisualDocument, visualHtmlToSource } from '../dist-test/wysiwyg.js'
 
 test('the renderer produces Obsidian-ready HTML', () => {
   const html = carveToHtml('# Human markup\n\nA *strong* idea and [link](https://example.com).', { allowRawHtml: false })
@@ -36,4 +37,19 @@ test('TOML, JSON, and malformed properties stay inspectable', () => {
   assert.equal(extractMetadata('---toml\ntitle = "TOML"\n---\n').properties.title, 'TOML')
   assert.equal(extractMetadata('---json\n{"title":"JSON"}\n---\n').properties.title, 'JSON')
   assert.equal(extractMetadata('---json\n{broken\n---\n').properties.parseError, true)
+})
+
+test('visual editing round-trips common blocks and formatting', () => {
+  const visual = sourceToVisualDocument('# Hello\n\nA *strong* idea.\n\n- one\n- two\n')
+  assert.equal(visual.canonicalizes, false)
+  const edited = visualHtmlToSource(visual.html.replace('>strong<', '>clear<'), visual.frontmatter)
+  assert.match(edited.source, /A \*clear\* idea\./)
+  assert.match(edited.source, /- one\n- two/)
+})
+
+test('visual editing preserves frontmatter bytes outside the editable surface', () => {
+  const source = '---toml\r\ntitle = "Human"\r\n---\r\n# Hello\n'
+  const visual = sourceToVisualDocument(source)
+  assert.equal(visual.frontmatter, '---toml\r\ntitle = "Human"\r\n---\r\n')
+  assert.equal(visualHtmlToSource(visual.html, visual.frontmatter).source, source)
 })

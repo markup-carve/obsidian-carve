@@ -3,21 +3,40 @@
 An Obsidian community plugin for reading and editing `.crv` files with the
 [Carve](https://markup-carve.github.io/carve/) markup language.
 
-The plugin registers `.crv` as its own Obsidian view and provides three modes:
+The plugin registers `.crv` as its own Obsidian view and provides four modes:
 
 - **Reading** renders the document with `@markup-carve/carve`.
 - **Source** uses a full CodeMirror 6 editor with Carve highlighting, line
   numbers, search, history, selections, and standard editing keys.
 - **Live split** keeps the CodeMirror source and rendered document side by side
   and refreshes the preview as you type.
+- **Visual (experimental)** edits rendered prose directly and imports each
+  change through Carve's safe HTML importer.
 
 Use the book, pencil, and columns icons in the view header, or the matching
 `Carve: Open … view` commands.
 
-Live split is intentionally WYSIWYG-adjacent rather than a lossy
-`contenteditable` façade: the source remains authoritative while every edit is
-rendered immediately. True rich-text editing needs selection-preserving,
-bidirectional Carve AST patches and is outside this plugin version.
+Visual mode tests WYSIWYG behavior in detail: headings, paragraphs, emphasis,
+links, quotes, lists, paste, native selection, and undo work directly in the
+rendered surface. Frontmatter bytes remain outside the editable DOM, conversion
+warnings are visible, and **Revert source** discards the whole visual session.
+Because HTML import canonicalizes some advanced Carve-only constructs, Source
+and Live split remain the lossless modes.
+
+### Visual-mode boundary
+
+| Behavior | Current result |
+| --- | --- |
+| Plain text, headings, emphasis, quotes, lists, and ordinary links | Editable and saved as Carve |
+| Browser selection, typing, paste, and undo | Remain native while the visual surface is open |
+| YAML, TOML, or JSON frontmatter | Kept byte-for-byte outside the editable surface |
+| Tables | Editable, then written in Carve's canonical table spelling |
+| Wikilinks, embeds, tags, admonitions, footnotes, and custom attributes | May normalize through their rendered HTML; a warning appears before editing |
+| Raw HTML | Remains disabled on the vault rendering path |
+
+This is deliberately an experiment rather than the default mode. A fully
+lossless WYSIWYG editor would patch positioned Carve AST nodes back into their
+original source ranges instead of round-tripping the whole body through HTML.
 
 ## Vault features
 
