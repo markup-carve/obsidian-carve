@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Expand visual formatting beyond default Markdown and add contextual table
+  creation, row/column insertion and deletion, header toggles, captions,
+  structural undo, Tab navigation, dimension bounds, and merged-cell guards.
 - Add an experimental visual editor backed by Carve's safe HTML importer, with
   formatting controls, native undo, frontmatter preservation, conversion
   warnings, and a source-revert escape hatch.

@@ -35,6 +35,15 @@ and Live split remain the lossless modes.
 | Wikilinks, embeds, tags, admonitions, footnotes, and custom attributes | Visual editing is locked because rendered HTML cannot preserve every semantic |
 | Raw HTML | Remains disabled on the vault rendering path |
 
+The visual toolbar goes beyond default Markdown prose controls with underline,
+strikethrough, highlight, superscript, subscript, all six heading levels,
+inline and block code, link removal, horizontal rules, and formatting reset.
+Tables have their own contextual toolbar: insert a chosen `rows × columns`
+size, add a row or column before/after the selected cell, delete either axis,
+toggle header cells, edit the caption, undo structural operations, or press Tab
+in the last cell to append a row. Ambiguous column edits are disabled for
+merged-cell tables rather than guessing at span geometry.
+
 The plugin compares position-free ASTs before enabling the editor. When the
 round-trip changes semantics, the surface stays read-only unless the user
 explicitly chooses **Enable lossy editing**; **Revert source** remains available

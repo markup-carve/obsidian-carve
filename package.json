@@ -10,7 +10,7 @@
     "build": "node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
     "test": "npm run build:test && node --test",
-    "build:test": "esbuild src/metadata.ts src/render.ts src/wysiwyg.ts --platform=node --format=esm --outdir=dist-test",
+    "build:test": "esbuild src/metadata.ts src/render.ts src/wysiwyg.ts src/visual-table.ts --platform=node --format=esm --outdir=dist-test",
     "typecheck": "tsc --noEmit",
     "test:all": "npm test && npm run typecheck && npm run build"
   },
@@ -28,6 +28,7 @@
     "@types/node": "^24.0.0",
     "builtin-modules": "^5.0.0",
     "esbuild": "^0.25.0",
+    "happy-dom": "^20.11.6",
     "obsidian": "^1.13.1",
     "typescript": "^5.9.0"
   }
