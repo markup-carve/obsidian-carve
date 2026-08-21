@@ -33,6 +33,8 @@
 .carve-visual-editor > :first-child { margin-top: 0; }
 .carve-visual-status { padding: .35rem var(--file-margins); border-top: 1px solid var(--background-modifier-border); color: var(--text-muted); background: var(--background-secondary); font-size: var(--font-ui-smaller); }
 .carve-visual-status.is-warning { color: var(--text-warning); }
+.carve-visual-shell.is-visual-locked .carve-visual-editor { opacity: .78; cursor: not-allowed; }
+.carve-visual-toolbar .carve-visual-unlock { color: var(--text-warning); border-color: var(--text-warning); }
 @media (max-width: 850px) {
   .carve-split { grid-template-columns: 1fr; grid-template-rows: minmax(16rem, 1fr) minmax(16rem, 1fr); }
   .carve-split > :first-child { border-right: 0; border-bottom: 1px solid var(--background-modifier-border); }

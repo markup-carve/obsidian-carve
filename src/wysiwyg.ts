@@ -1,4 +1,4 @@
-import { htmlToCarve } from '@markup-carve/carve'
+import { carveToAstJson, htmlToCarve } from '@markup-carve/carve'
 import { renderCarve } from './render.js'
 
 export interface VisualDocument {
@@ -7,7 +7,18 @@ export interface VisualDocument {
   html: string
   canonicalBody: string
   canonicalizes: boolean
+  semanticLoss: boolean
   diagnostics: string[]
+}
+
+function semanticJson(source: string): string | null {
+  const clean = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(clean)
+    if (!value || typeof value !== 'object') return value
+    const nodeType = 'type' in value ? value.type : undefined
+    return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'pos' && key !== 'srcByteLength' && !(nodeType === 'thematic_break' && key === 'marker')).map(([key, child]) => [key, clean(child)]))
+  }
+  try { return JSON.stringify(clean(carveToAstJson(source))) } catch { return null }
 }
 
 function splitFrontmatter(source: string): { frontmatter: string; body: string } {
@@ -34,7 +45,17 @@ export function sourceToVisualDocument(source: string): VisualDocument {
   const { frontmatter, body } = splitFrontmatter(source)
   const html = renderCarve(body)
   const converted = htmlToCarve(html, { mode: 'safe' })
-  return { frontmatter, body, html, canonicalBody: converted.value, canonicalizes: converted.value !== body, diagnostics: diagnosticMessages(converted.report) }
+  const beforeSemantics = semanticJson(body)
+  const afterSemantics = semanticJson(converted.value)
+  return {
+    frontmatter,
+    body,
+    html,
+    canonicalBody: converted.value,
+    canonicalizes: converted.value !== body,
+    semanticLoss: beforeSemantics === null || afterSemantics === null || beforeSemantics !== afterSemantics,
+    diagnostics: diagnosticMessages(converted.report),
+  }
 }
 
 export function visualHtmlToSource(html: string, frontmatter = ''): { source: string; diagnostics: string[] } {

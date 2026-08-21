@@ -31,12 +31,16 @@ and Live split remain the lossless modes.
 | Browser selection, typing, paste, and undo | Remain native while the visual surface is open |
 | YAML, TOML, or JSON frontmatter | Kept byte-for-byte outside the editable surface |
 | Tables | Editable, then written in Carve's canonical table spelling |
-| Wikilinks, embeds, tags, admonitions, footnotes, and custom attributes | May normalize through their rendered HTML; a warning appears before editing |
+| Code blocks | Protected with the current Carve importer; an upstream newline round-trip fix is pending |
+| Wikilinks, embeds, tags, admonitions, footnotes, and custom attributes | Visual editing is locked because rendered HTML cannot preserve every semantic |
 | Raw HTML | Remains disabled on the vault rendering path |
 
-This is deliberately an experiment rather than the default mode. A fully
-lossless WYSIWYG editor would patch positioned Carve AST nodes back into their
-original source ranges instead of round-tripping the whole body through HTML.
+The plugin compares position-free ASTs before enabling the editor. When the
+round-trip changes semantics, the surface stays read-only unless the user
+explicitly chooses **Enable lossy editing**; **Revert source** remains available
+for that session. A fully lossless WYSIWYG editor would patch positioned Carve
+AST nodes back into their original source ranges instead of round-tripping the
+whole body through HTML.
 
 ## Vault features
 

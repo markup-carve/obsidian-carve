@@ -38,7 +38,9 @@ export class CarveView extends TextFileView {
     this.addAction('pencil', 'Source view', () => this.setMode('source'))
     this.addAction('columns-2', 'Live split view', () => this.setMode('split'))
     this.addAction('paintbrush', 'Experimental visual editor', () => this.setMode('visual'))
-    this.registerEvent(this.plugin.index.on('changed', () => { if (this.mode !== 'source') void this.draw() }))
+    // Index writes include this view's own debounced saves. Redrawing an active
+    // editor here would destroy its selection and browser undo history.
+    this.registerEvent(this.plugin.index.on('changed', () => { if (this.mode === 'preview') void this.draw() }))
   }
 
   async onClose(): Promise<void> { this.destroyEditor() }
@@ -98,6 +100,12 @@ export class CarveView extends TextFileView {
     const surface = shell.createEl('article', { cls: ['carve-visual-editor', 'markdown-rendered'], attr: { contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Carve visual editor', spellcheck: 'true' } })
     surface.innerHTML = visual.html
     const status = shell.createDiv({ cls: 'carve-visual-status' })
+    if (visual.semanticLoss) {
+      surface.contentEditable = 'false'
+      shell.addClass('is-visual-locked')
+      const unlock = toolbar.createEl('button', { text: 'Enable lossy editing', cls: 'carve-visual-unlock', attr: { type: 'button' } })
+      unlock.addEventListener('click', () => { surface.contentEditable = 'true'; shell.removeClass('is-visual-locked'); unlock.remove(); status.setText('Lossy editing enabled for this session. Revert source remains available.'); surface.focus() })
+    }
     const sync = (): void => {
       const result = visualHtmlToSource(surface.innerHTML, visual.frontmatter)
       this.source = result.source
@@ -126,7 +134,10 @@ export class CarveView extends TextFileView {
       const plain = event.clipboardData?.getData('text/plain')
       if (plain && !event.clipboardData?.getData('text/html')) { event.preventDefault(); document.execCommand('insertText', false, plain) }
     })
-    if (visual.canonicalizes || visual.diagnostics.length) {
+    if (visual.semanticLoss) {
+      status.addClass('is-warning')
+      status.setText(`Protected: rendered HTML cannot preserve every construct in this document. Visual editing is locked until explicitly enabled; Source and Live split are lossless.`)
+    } else if (visual.canonicalizes || visual.diagnostics.length) {
       status.addClass('is-warning')
       status.setText(`Experimental: editing will canonicalize this document${visual.diagnostics.length ? ` and reported ${visual.diagnostics.length} import warning(s)` : ''}. Frontmatter is preserved verbatim; use Source for unsupported constructs.`)
     } else status.setText('Experimental visual mode. Frontmatter is preserved verbatim.')
