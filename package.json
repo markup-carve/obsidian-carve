@@ -9,11 +9,21 @@
   "scripts": {
     "build": "node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
-    "test": "node --test",
+    "test": "npm run build:test && node --test",
+    "build:test": "esbuild src/metadata.ts src/render.ts --platform=node --format=esm --outdir=dist-test",
     "typecheck": "tsc --noEmit",
     "test:all": "npm test && npm run typecheck && npm run build"
   },
-  "dependencies": {"@markup-carve/carve": "^0.1.4"},
+  "dependencies": {
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "6.5.0",
+    "@codemirror/view": "6.38.6",
+    "@lezer/highlight": "^1.2.3",
+    "@markup-carve/carve": "^0.1.4",
+    "codemirror": "^6.0.2",
+    "smol-toml": "1.8.0",
+    "yaml": "^2.9.0"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "builtin-modules": "^5.0.0",
