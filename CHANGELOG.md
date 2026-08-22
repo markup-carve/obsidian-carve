@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Treat browser-generated empty visual rows as ordinary block spacing instead
+  of writing semantic `\` hard-break lines; intentional breaks inside non-empty
+  paragraphs remain intact.
 - Keep newly inserted empty table cells tall, clickable, and caret-visible with
   editor-only placeholders that are stripped before saving Carve source.
 - Expand visual formatting beyond default Markdown and add contextual table
