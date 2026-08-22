@@ -54,6 +54,12 @@ test('visual editing preserves frontmatter bytes outside the editable surface', 
   assert.equal(visualHtmlToSource(visual.html, visual.frontmatter).source, source)
 })
 
+test('visual table caret placeholders never enter Carve source', () => {
+  const edited = visualHtmlToSource('<table><tr><th>A</th></tr><tr><td><br data-carve-placeholder=""></td></tr></table>')
+  assert.doesNotMatch(edited.source, /\\\n|placeholder/)
+  assert.equal(edited.source, '|= A |\n| |\n')
+})
+
 test('visual safety audit classifies the Carve element surface', () => {
   const lossless = {
     paragraph: 'Plain text\n', heading: '# Heading\n', inline: '/italic/ *bold* _under_ ~strike~ =mark= `code`\n',

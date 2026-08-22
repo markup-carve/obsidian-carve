@@ -11,7 +11,7 @@ Object.assign(globalThis, {
   HTMLTableElement: window.HTMLTableElement,
 })
 
-const { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, isSimpleTable, parseTableSize, setTableCaption, toggleTableHeader } = await import('../dist-test/visual-table.js')
+const { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, parseTableSize, setTableCaption, toggleTableHeader } = await import('../dist-test/visual-table.js')
 
 test('parses and bounds requested table dimensions', () => {
   assert.deepEqual(parseTableSize('3 × 4'), [3, 4])
@@ -26,6 +26,15 @@ test('creates an accessible two-dimensional table structure', () => {
   assert.deepEqual(Array.from(table.rows, (row) => row.cells.length), [3, 3, 3])
   assert.equal(table.rows[0].cells[0].tagName, 'TH')
   assert.equal(table.rows[1].cells[0].tagName, 'TD')
+  assert.ok(table.rows[1].cells[0].querySelector('br[data-carve-placeholder]'))
+})
+
+test('adds editor-only caret targets to existing empty cells', () => {
+  const host = document.createElement('div')
+  host.innerHTML = '<table><tr><td></td><td>content</td></tr></table>'
+  ensureTablePlaceholders(host)
+  assert.ok(host.querySelector('td:first-child br[data-carve-placeholder]'))
+  assert.equal(host.querySelector('td:last-child br'), null)
 })
 
 test('inserts rows before, after, and between existing rows', () => {

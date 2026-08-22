@@ -59,6 +59,7 @@ export function sourceToVisualDocument(source: string): VisualDocument {
 }
 
 export function visualHtmlToSource(html: string, frontmatter = ''): { source: string; diagnostics: string[] } {
-  const converted = htmlToCarve(html, { mode: 'safe' })
+  const cleanHtml = html.replace(/<br\s+data-carve-placeholder(?:="")?\s*\/?\s*>/gi, '')
+  const converted = htmlToCarve(cleanHtml, { mode: 'safe' })
   return { source: `${frontmatter}${converted.value}`, diagnostics: diagnosticMessages(converted.report) }
 }
