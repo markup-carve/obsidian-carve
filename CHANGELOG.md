@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep newly inserted empty table cells tall, clickable, and caret-visible with
+  editor-only placeholders that are stripped before saving Carve source.
 - Expand visual formatting beyond default Markdown and add contextual table
   creation, row/column insertion and deletion, header toggles, captions,
   structural undo, Tab navigation, dimension bounds, and merged-cell guards.

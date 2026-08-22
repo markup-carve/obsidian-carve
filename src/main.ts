@@ -7,7 +7,7 @@ import { extractMetadata, withCrvExtension, type CarveMetadata } from './metadat
 import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { sourceToVisualDocument, visualHtmlToSource } from './wysiwyg'
-import { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, focusCell, isSimpleTable, parseTableSize, selectionCell, setTableCaption, toggleTableHeader } from './visual-table'
+import { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, parseTableSize, selectionCell, setTableCaption, toggleTableHeader } from './visual-table'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
 export type CarveViewMode = 'preview' | 'source' | 'split' | 'visual'
@@ -100,6 +100,7 @@ export class CarveView extends TextFileView {
     const toolbar = shell.createDiv({ cls: 'carve-visual-toolbar', attr: { role: 'toolbar', 'aria-label': 'Visual formatting' } })
     const surface = shell.createEl('article', { cls: ['carve-visual-editor', 'markdown-rendered'], attr: { contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Carve visual editor', spellcheck: 'true' } })
     surface.innerHTML = visual.html
+    ensureTablePlaceholders(surface)
     const status = shell.createDiv({ cls: 'carve-visual-status' })
     if (visual.semanticLoss) {
       surface.contentEditable = 'false'
@@ -198,7 +199,10 @@ export class CarveView extends TextFileView {
     const updateTableTools = (): void => { tableTools.toggleClass('is-active', selectionCell(surface) !== null); undoTable.disabled = tableHistory.length === 0 }
     const revert = toolbar.createEl('button', { text: 'Revert source', cls: 'carve-visual-revert', attr: { type: 'button', title: 'Discard this visual editing session' } })
     revert.addEventListener('click', () => { this.source = this.visualOriginal; this.requestSave(); void this.draw() })
-    surface.addEventListener('input', sync)
+    surface.addEventListener('input', () => {
+      for (const placeholder of Array.from(surface.querySelectorAll('br[data-carve-placeholder]'))) if (placeholder.parentElement?.textContent) placeholder.remove()
+      sync()
+    })
     surface.addEventListener('click', updateTableTools)
     surface.addEventListener('keyup', updateTableTools)
     surface.addEventListener('keydown', (event) => {

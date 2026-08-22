@@ -1,5 +1,21 @@
 export type TableDirection = 'before' | 'after'
 
+function editableCell(tag: 'td' | 'th'): HTMLTableCellElement {
+  const cell = document.createElement(tag) as HTMLTableCellElement
+  ensureCellPlaceholder(cell)
+  return cell
+}
+
+export function ensureCellPlaceholder(cell: HTMLTableCellElement): void {
+  if (cell.textContent || cell.querySelector('img,br:not([data-carve-placeholder])')) return
+  if (!cell.querySelector('br[data-carve-placeholder]')) cell.append(document.createElement('br'))
+  cell.querySelector('br:last-child')?.setAttribute('data-carve-placeholder', '')
+}
+
+export function ensureTablePlaceholders(root: ParentNode): void {
+  for (const cell of Array.from(root.querySelectorAll<HTMLTableCellElement>('td,th'))) ensureCellPlaceholder(cell)
+}
+
 export function parseTableSize(input: string | null, fallback: [number, number] = [2, 2]): [number, number] | null {
   if (input === null) return null
   const match = input.trim().match(/^(\d+)\s*[x×,]\s*(\d+)$/i)
@@ -22,7 +38,7 @@ export function addTableRow(cell: HTMLTableCellElement, direction: TableDirectio
   const row = cell.parentElement as HTMLTableRowElement | null
   if (!row) return null
   const created = document.createElement('tr')
-  for (const sibling of Array.from(row.cells)) created.append(document.createElement(sibling.tagName.toLowerCase()))
+  for (const sibling of Array.from(row.cells)) created.append(editableCell(sibling.tagName.toLowerCase() as 'td' | 'th'))
   row.parentElement?.insertBefore(created, direction === 'before' ? row : row.nextSibling)
   return created
 }
@@ -35,7 +51,7 @@ export function addTableColumn(cell: HTMLTableCellElement, direction: TableDirec
   for (const row of Array.from(table.rows)) {
     const reference = row.cells[index] ?? null
     const tag = row.parentElement?.tagName === 'THEAD' || row.cells[0]?.tagName === 'TH' ? 'th' : 'td'
-    const next = document.createElement(tag) as HTMLTableCellElement
+    const next = editableCell(tag)
     row.insertBefore(next, reference)
     created.push(next)
   }
@@ -77,11 +93,11 @@ export function setTableCaption(table: HTMLTableElement, text: string): HTMLTabl
 export function createTable(rows = 2, columns = 2): HTMLTableElement {
   const table = document.createElement('table')
   const head = table.createTHead().insertRow()
-  for (let column = 0; column < columns; column++) head.append(document.createElement('th'))
+  for (let column = 0; column < columns; column++) head.append(editableCell('th'))
   const body = table.createTBody()
   for (let row = 1; row < rows; row++) {
     const line = body.insertRow()
-    for (let column = 0; column < columns; column++) line.insertCell()
+    for (let column = 0; column < columns; column++) line.append(editableCell('td'))
   }
   return table
 }

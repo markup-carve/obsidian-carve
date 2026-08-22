@@ -42,7 +42,9 @@ Tables have their own contextual toolbar: insert a chosen `rows × columns`
 size, add a row or column before/after the selected cell, delete either axis,
 toggle header cells, edit the caption, undo structural operations, or press Tab
 in the last cell to append a row. Ambiguous column edits are disabled for
-merged-cell tables rather than guessing at span geometry.
+merged-cell tables rather than guessing at span geometry. Empty rows and cells
+retain a visible editing height and caret target before any content is entered;
+their editor-only placeholders never enter the `.crv` file.
 
 The plugin compares position-free ASTs before enabling the editor. When the
 round-trip changes semantics, the surface stays read-only unless the user
