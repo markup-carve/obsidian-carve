@@ -46,3 +46,22 @@
   .carve-reading-layout { grid-template-columns: 1fr; }
   .carve-inspector { border-left: 0; border-top: 1px solid var(--background-modifier-border); padding: 1rem 0 0; }
 }
+.carve-editor .carve-live-heading {
+  font-weight: 650;
+  line-height: 1.3;
+}
+.carve-editor .carve-live-heading-1 { font-size: 2em; }
+.carve-editor .carve-live-heading-2 { font-size: 1.6em; }
+.carve-editor .carve-live-heading-3 { font-size: 1.35em; }
+.carve-editor .carve-live-heading-4 { font-size: 1.2em; }
+.carve-editor .carve-live-heading-5 { font-size: 1.1em; }
+.carve-editor .carve-live-heading-6 { font-size: 1em; }
+.carve-editor .carve-live-strong { font-weight: 700; }
+.carve-editor .carve-live-emphasis { font-style: italic; }
+.carve-editor .carve-live-strikethrough { text-decoration: line-through; }
+.carve-editor .carve-live-code {
+  font-family: var(--font-monospace);
+  background: var(--background-secondary);
+  border-radius: 3px;
+  padding: 0 0.15em;
+}

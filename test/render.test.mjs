@@ -74,13 +74,13 @@ test('visual safety audit classifies the Carve element surface', () => {
     scripts: '{^super^} {,sub,}\n', link: '[label](https://example.com)\n', image: '![alt](image.png)\n',
     list: '- one\n- [x] done\n', quote: '> quote\n', definitionList: ':: term\n:  definition\n',
     table: '|= A |= B |\n| x | y |\n', figure: '![alt](image.png)\n^ Caption\n', thematicBreak: '***\n',
-    hardBreak: 'one\\\ntwo\n', frontmatter: '---\ntitle: T\n---\n# H\n',
+    hardBreak: 'one\\\ntwo\n', codeBlock: '```js\nconst x = 1\n```\n', math: 'Inline $`x`\n', frontmatter: '---\ntitle: T\n---\n# H\n',
   }
   const protectedFromLoss = {
-    codeBlock: '```js\nconst x = 1\n```\n', admonition: '::: note "Title"\nbody\n:::\n',
+    admonition: '::: note "Title"\nbody\n:::\n',
     div: '::: custom\nbody\n:::\n', lineBlock: '::: |\nline one\n line two\n:::\n',
     footnote: 'Text[^a]\n\n[^a]: note\n', inlineFootnote: 'Text^[note]\n', attributes: '{#id .wide}\n# Heading\n',
-    abbreviation: '*[HTML]: HyperText Markup Language\n\nHTML\n', math: 'Inline $`x`\n',
+    abbreviation: '*[HTML]: HyperText Markup Language\n\nHTML\n',
     comments: 'before {% hidden %} after\n\n%% hidden\n', criticMarkup: '{+inserted+} {-deleted-} {~old~>new~} {#comment#}\n',
     raw: '`<b>x</b>`{=html}\n', wikilink: '[[Note|label]]\n', embed: '![[Note]]\n', tagMention: '#tag @user\n',
   }
