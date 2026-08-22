@@ -3,7 +3,7 @@ import test from 'node:test'
 import { carveToHtml } from '@markup-carve/carve'
 import { extractMetadata, withCrvExtension } from '../dist-test/metadata.js'
 import { renderCarve, rewriteWikiSyntax } from '../dist-test/render.js'
-import { sourceToVisualDocument, visualHtmlToSource } from '../dist-test/wysiwyg.js'
+import { normalizeVisualHtml, sourceToVisualDocument, visualHtmlToSource } from '../dist-test/wysiwyg.js'
 
 test('the renderer produces Obsidian-ready HTML', () => {
   const html = carveToHtml('# Human markup\n\nA *strong* idea and [link](https://example.com).', { allowRawHtml: false })
@@ -58,6 +58,14 @@ test('visual table caret placeholders never enter Carve source', () => {
   const edited = visualHtmlToSource('<table><tr><th>A</th></tr><tr><td><br data-carve-placeholder=""></td></tr></table>')
   assert.doesNotMatch(edited.source, /\\\n|placeholder/)
   assert.equal(edited.source, '|= A |\n| |\n')
+})
+
+test('empty visual rows become ordinary source spacing, not hard breaks', () => {
+  const html = '<div><br></div><ul><li>sdfdsf</li><li>sdfsdf</li></ul><p><br></p>'
+  assert.equal(visualHtmlToSource(html).source, '- sdfdsf\n- sdfsdf\n')
+  assert.doesNotMatch(visualHtmlToSource(html).source, /^\\$/m)
+  assert.equal(normalizeVisualHtml('<p>a<br>b</p>'), '<p>a<br>b</p>')
+  assert.equal(visualHtmlToSource('<p>a<br>b</p>').source, 'a\\\nb\n')
 })
 
 test('visual safety audit classifies the Carve element surface', () => {

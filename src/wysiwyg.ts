@@ -59,7 +59,14 @@ export function sourceToVisualDocument(source: string): VisualDocument {
 }
 
 export function visualHtmlToSource(html: string, frontmatter = ''): { source: string; diagnostics: string[] } {
-  const cleanHtml = html.replace(/<br\s+data-carve-placeholder(?:="")?\s*\/?\s*>/gi, '')
+  const cleanHtml = normalizeVisualHtml(html)
   const converted = htmlToCarve(cleanHtml, { mode: 'safe' })
   return { source: `${frontmatter}${converted.value}`, diagnostics: diagnosticMessages(converted.report) }
+}
+
+/** Browser empty blocks represent spacing, not authored hard breaks. */
+export function normalizeVisualHtml(html: string): string {
+  return html
+    .replace(/<br\s+data-carve-placeholder(?:="")?\s*\/?\s*>/gi, '')
+    .replace(/<(p|div)(?:\s[^>]*)?>\s*(?:<br(?:\s[^>]*)?\/?\s*>\s*)*<\/\1>/gi, '')
 }
