@@ -114,3 +114,44 @@ export function clearVisualFormatting(surface: HTMLElement, selection: Selection
   const text = document.createTextNode(range.toString()); range.deleteContents(); range.insertNode(text)
   range.selectNode(text); selection?.removeAllRanges(); selection?.addRange(range); return true
 }
+
+function activeListItem(surface: HTMLElement, selection: Selection | null): HTMLLIElement | null {
+  const block = activeBlock(surface, selection)
+  const item = block?.closest<HTMLLIElement>('li') ?? null
+  return item && surface.contains(item) ? item : null
+}
+
+export function indentVisualListItem(surface: HTMLElement, outdent = false, selection: Selection | null = document.getSelection()): boolean {
+  const item = activeListItem(surface, selection)
+  const list = item?.parentElement
+  if (!item || !list || !/^(?:UL|OL)$/.test(list.tagName)) return false
+  if (outdent) {
+    const parentItem = list.parentElement?.closest<HTMLLIElement>('li')
+    if (!parentItem) return false
+    parentItem.after(item)
+    if (!list.children.length) list.remove()
+    placeCaretAtStart(item); return true
+  }
+  const previous = item.previousElementSibling
+  if (!(previous instanceof HTMLLIElement)) return false
+  let nested = Array.from(previous.children).find((child) => child.tagName === list.tagName) as HTMLOListElement | HTMLUListElement | undefined
+  if (!nested) { nested = document.createElement(list.tagName.toLowerCase()) as HTMLOListElement | HTMLUListElement; previous.append(nested) }
+  nested.append(item); placeCaretAtStart(item); return true
+}
+
+export function continueVisualList(surface: HTMLElement, selection: Selection | null = document.getSelection()): boolean {
+  const item = activeListItem(surface, selection)
+  const list = item?.parentElement
+  if (!item || !list || !/^(?:UL|OL)$/.test(list.tagName)) return false
+  const clone = item.cloneNode(true) as HTMLLIElement
+  for (const child of Array.from(clone.querySelectorAll('ul,ol,input,br'))) child.remove()
+  if (!(clone.textContent ?? '').trim()) {
+    const parentItem = list.parentElement?.closest<HTMLLIElement>('li')
+    if (parentItem) { parentItem.after(item); if (!list.children.length) list.remove(); placeCaretAtStart(item); return true }
+    const paragraph = document.createElement('p'); paragraph.append(document.createElement('br')); list.after(paragraph); item.remove(); if (!list.children.length) list.remove(); placeCaretAtStart(paragraph); return true
+  }
+  const next = document.createElement('li')
+  const task = Array.from(item.children).find((child) => child instanceof HTMLInputElement && child.type === 'checkbox') as HTMLInputElement | undefined
+  if (task) { const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.disabled = true; next.append(checkbox, ' ') }
+  next.append(document.createElement('br')); item.after(next); placeCaretAtStart(next); return true
+}

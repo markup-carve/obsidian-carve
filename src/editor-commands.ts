@@ -1,4 +1,4 @@
-import { EditorSelection, type Extension } from '@codemirror/state'
+import { EditorSelection, Prec, type Extension } from '@codemirror/state'
 import { keymap, type Command, type EditorView } from '@codemirror/view'
 
 export interface FormatEdit {
@@ -180,11 +180,59 @@ export const wrapCallout: Command = (view): boolean => {
   return true
 }
 
-export const carveEditorCommands: Extension = keymap.of([
+export function listIndentEdit(source: string, lineFrom: number, lineTo: number, outdent = false): FormatEdit | null {
+  const line = source.slice(lineFrom, lineTo)
+  if (!/^[ \t]*(?:[-+*]|\d+[.)])[ \t]+(?:\[[ xX-]\][ \t]+)?/.test(line)) return null
+  const leading = /^[ \t]*/.exec(line)?.[0] ?? ''
+  if (outdent) {
+    if (!leading) return null
+    const remove = leading.startsWith('\t') ? 1 : Math.min(2, leading.length)
+    return { changes: [{ from: lineFrom, to: lineFrom + remove, insert: '' }], anchor: lineFrom, head: lineFrom }
+  }
+  return { changes: [{ from: lineFrom, to: lineFrom, insert: '  ' }], anchor: lineFrom + 2, head: lineFrom + 2 }
+}
+
+export function listContinuationEdit(source: string, lineFrom: number, lineTo: number, head: number): FormatEdit | null {
+  const line = source.slice(lineFrom, lineTo)
+  const match = /^([ \t]*)([-+*]|(\d+)[.)])([ \t]+)(?:\[([ xX-])\]([ \t]+))?/.exec(line)
+  if (!match) return null
+  const content = line.slice(match[0].length)
+  if (!content.trim()) return { changes: [{ from: lineFrom, to: lineFrom + match[0].length, insert: '' }], anchor: lineFrom, head: lineFrom }
+  const marker = match[3] ? `${Number(match[3]) + 1}${match[2]!.endsWith(')') ? ')' : '.'}` : match[2]!
+  const prefix = `${match[1]}${marker}${match[4]}${match[5] !== undefined ? `[ ]${match[6]}` : ''}`
+  return { changes: [{ from: head, to: head, insert: `\n${prefix}` }], anchor: head + prefix.length + 1, head: head + prefix.length + 1 }
+}
+
+function changeListIndent(outdent: boolean): Command {
+  return (view) => {
+    const selection = view.state.selection.main
+    const first = view.state.doc.lineAt(selection.from).number
+    const last = view.state.doc.lineAt(selection.to).number
+    const source = view.state.doc.toString(); const changes: FormatEdit['changes'] = []
+    for (let number = first; number <= last; number++) {
+      const line = view.state.doc.line(number); const edit = listIndentEdit(source, line.from, line.to, outdent)
+      if (edit) changes.push(...edit.changes)
+    }
+    if (!changes.length) return false
+    view.dispatch({ changes, scrollIntoView: true }); return true
+  }
+}
+const indentList = changeListIndent(false)
+const outdentList = changeListIndent(true)
+const continueList: Command = (view) => {
+  const selection = view.state.selection.main; if (!selection.empty) return false
+  const line = view.state.doc.lineAt(selection.head); const edit = listContinuationEdit(view.state.doc.toString(), line.from, line.to, selection.head)
+  if (!edit) return false; view.dispatch({ changes: edit.changes, selection: EditorSelection.cursor(edit.head), scrollIntoView: true }); return true
+}
+
+export const carveEditorCommands: Extension = Prec.highest(keymap.of([
   { key: 'Mod-b', run: toggleStrong },
   { key: 'Mod-i', run: toggleEmphasis },
   { key: 'Mod-Shift-x', run: toggleStrike },
   { key: 'Mod-Shift-h', run: toggleHighlight },
   { key: 'Mod-Shift-c', run: toggleCode },
   { key: 'Mod-k', run: createLink },
-])
+  { key: 'Tab', run: indentList },
+  { key: 'Shift-Tab', run: outdentList },
+  { key: 'Enter', run: continueList },
+]))

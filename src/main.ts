@@ -10,7 +10,7 @@ import { createCarveLivePreview } from './live-preview'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
 import { editOpaqueWithPrompts, renderOpaqueConstruct, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from './wysiwyg'
 import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, toggleTableHeader } from './visual-table'
-import { applyVisualInputRule, clearVisualFormatting, formatVisualBlock, insertPlainText, insertVisualRule, toggleVisualList, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
+import { applyVisualInputRule, clearVisualFormatting, continueVisualList, formatVisualBlock, indentVisualListItem, insertPlainText, insertVisualRule, toggleVisualList, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
 export type CarveViewMode = 'preview' | 'source' | 'split' | 'visual'
@@ -280,7 +280,9 @@ export class CarveView extends TextFileView {
         if (tag) { event.preventDefault(); if (wrapVisualSelection(surface, tag)) sync(); return }
       }
       if (event.key === 'Enter' && editOpaque(event.target)) { event.preventDefault(); return }
+      if (event.key === 'Enter' && continueVisualList(surface)) { event.preventDefault(); sync(); return }
       if (event.key !== 'Tab') return
+      if (indentVisualListItem(surface, event.shiftKey)) { event.preventDefault(); sync(); return }
       const cell = selectionCell(surface)
       if (!cell) return
       event.preventDefault()
