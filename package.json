@@ -19,7 +19,7 @@
     "@codemirror/state": "6.5.0",
     "@codemirror/view": "6.38.6",
     "@lezer/highlight": "^1.2.3",
-    "@markup-carve/carve": "github:markup-carve/carve-js#d58d12e74d6404eda01e85736da67ca8a6ed44bf",
+    "@markup-carve/carve": "github:markup-carve/carve-js#3ba8ba327d79d51b826ae28959c2726d79cb0a65",
     "codemirror": "^6.0.2",
     "smol-toml": "1.8.0",
     "yaml": "^2.9.0"

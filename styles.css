@@ -93,3 +93,25 @@
   font-family: var(--font-monospace);
   background: var(--background-secondary);
 }
+.carve-editor .carve-live-image,
+.carve-editor .carve-live-container-label,
+.carve-editor .carve-live-footnote-def {
+  display: inline-block;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  border-radius: 4px;
+  padding: 0.1em 0.45em;
+  user-select: none;
+}
+.carve-editor .carve-live-footnote-ref {
+  color: var(--link-color);
+  font-size: 0.75em;
+  vertical-align: super;
+  user-select: none;
+}
+.carve-editor .carve-live-container { border-left: 3px solid var(--interactive-accent); padding-left: 0.7em; }
+.carve-editor .carve-live-caption { color: var(--text-muted); font-style: italic; }
+.carve-editor .carve-live-math { font-family: var(--font-monospace); color: var(--text-accent); }
+.carve-editor .carve-live-comment { color: var(--text-faint); font-style: italic; }
+.carve-editor .carve-live-insert { color: var(--color-green); text-decoration: underline; }
+.carve-editor .carve-live-delete { color: var(--color-red); text-decoration: line-through; }

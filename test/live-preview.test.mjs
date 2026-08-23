@@ -83,3 +83,56 @@ test('semantic reparsing is debounced and bounded for responsive typing', () => 
   assert.equal(livePreviewDelay(250_000), LIVE_PREVIEW_IDLE_MS)
   assert.equal(livePreviewDelay(250_001), null)
 })
+
+test('images and captions become readable widgets without losing source', () => {
+  const source = '![alt](image.png)\n^ Caption'
+  const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+  assert.ok(shown.some((item) => item.kind === 'widget' && item.label === '🖼 alt'))
+  assert.ok(shown.some((item) => item.kind === 'mark' && item.className === 'carve-live-caption' && source.slice(item.from, item.to) === 'Caption'))
+  assert.deepEqual(livePresentations(source, [{ from: 5, to: 5 }]).filter((item) => item.kind === 'widget' && item.className === 'carve-live-image'), [])
+})
+
+test('footnote references and definitions get distinct source-backed widgets', () => {
+  const source = 'Text[^a]\n\n[^a]: note'
+  const widgets = livePresentations(source, [{ from: source.length, to: source.length }]).filter((item) => item.kind === 'widget')
+  assert.deepEqual(widgets, [
+    { kind: 'widget', at: 4, label: 'a', className: 'carve-live-footnote-ref' },
+    { kind: 'widget', at: 10, label: '↳ a', className: 'carve-live-footnote-def' },
+  ])
+})
+
+test('admonition fences collapse to a named container outside the cursor', () => {
+  const source = '::: note "Title"\nbody\n:::'
+  const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+  assert.ok(shown.some((item) => item.kind === 'widget' && item.label === 'note "Title"'))
+  assert.equal(shown.filter((item) => item.kind === 'hide').length, 2)
+  assert.deepEqual(livePresentations(source, [{ from: 19, to: 19 }]), [])
+})
+
+test('math delimiters hide while their authored content remains mapped', () => {
+  assert.deepEqual(livePresentations('Inline $`x`', [{ from: 11, to: 11 }]), [
+    { kind: 'hide', from: 7, to: 9 },
+    { kind: 'mark', from: 9, to: 10, className: 'carve-live-math' },
+    { kind: 'hide', from: 10, to: 11 },
+  ])
+})
+
+test('comments retain readable text while their delimiters hide', () => {
+  const source = 'before {% hidden %} after\n\n%% block note'
+  const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+  assert.equal(shown.filter((item) => item.kind === 'mark' && item.className === 'carve-live-comment').length, 2)
+  assert.ok(shown.some((item) => item.kind === 'mark' && source.slice(item.from, item.to).trim() === 'hidden'))
+  assert.ok(shown.some((item) => item.kind === 'mark' && source.slice(item.from, item.to) === 'block note'))
+})
+
+test('CriticMarkup distinguishes inserts, deletes, substitutions, and comments', () => {
+  const source = '{+inserted+} {-deleted-} {~old~>new~} {#comment#}'
+  const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+  assert.deepEqual(shown.filter((item) => item.kind === 'mark').map((item) => [item.className, source.slice(item.from, item.to)]), [
+    ['carve-live-insert', 'inserted'],
+    ['carve-live-delete', 'deleted'],
+    ['carve-live-delete', 'old'],
+    ['carve-live-insert', 'new'],
+    ['carve-live-comment', 'comment'],
+  ])
+})

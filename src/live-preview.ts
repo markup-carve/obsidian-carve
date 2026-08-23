@@ -118,6 +118,98 @@ export function livePresentations(
       presentations.push({ kind: 'hide', from: node.start + lastBreak, to: node.end })
       continue
     }
+    if (node.type === 'image') {
+      const image = /^!\[([^\]]*)\]\(([^)]*)\)$/.exec(authored)
+      if (!image) continue
+      presentations.push({ kind: 'widget', at: node.start, label: `🖼 ${image[1] || image[2]}`, className: 'carve-live-image' })
+      presentations.push({ kind: 'hide', from: node.start, to: node.end })
+      continue
+    }
+    if (node.type === 'footnote_ref') {
+      const reference = /^\[\^([^\]]+)\]$/.exec(authored)
+      if (!reference) continue
+      presentations.push({ kind: 'widget', at: node.start, label: reference[1]!, className: 'carve-live-footnote-ref' })
+      presentations.push({ kind: 'hide', from: node.start, to: node.end })
+      continue
+    }
+    if (node.type === 'footnote') {
+      const content = byParent.get(`${node.path}/children`)?.[0]
+      const marker = /^\[\^([^\]]+)\]:[ \t]*/.exec(authored)
+      if (!content || !marker || content.start <= node.start) continue
+      presentations.push({ kind: 'widget', at: node.start, label: `↳ ${marker[1]}`, className: 'carve-live-footnote-def' })
+      presentations.push({ kind: 'hide', from: node.start, to: content.start })
+      continue
+    }
+    if (node.type === 'admonition') {
+      const firstBreak = authored.indexOf('\n')
+      const lastBreak = authored.lastIndexOf('\n')
+      if (firstBreak < 0 || lastBreak <= firstBreak || !authored.startsWith(':::')) continue
+      const label = authored.slice(3, firstBreak).trim() || 'block'
+      presentations.push({ kind: 'widget', at: node.start, label, className: 'carve-live-container-label' })
+      presentations.push({ kind: 'hide', from: node.start, to: node.start + firstBreak + 1 })
+      presentations.push({ kind: 'line', at: node.start + firstBreak + 1, className: 'carve-live-container' })
+      presentations.push({ kind: 'hide', from: node.start + lastBreak, to: node.end })
+      continue
+    }
+    if (node.type === 'figure') {
+      const target = byParent.get(node.path)?.find((candidate) => candidate.path === `${node.path}/target`)
+      const caption = textBounds({ ...node, path: `${node.path}/caption` })
+      if (target && caption && target.end < caption.start) {
+        presentations.push({ kind: 'hide', from: target.end, to: caption.start })
+        presentations.push({ kind: 'mark', from: caption.start, to: caption.end, className: 'carve-live-caption' })
+      }
+      continue
+    }
+    if (node.type === 'math') {
+      const math = /^(\$+`)([\s\S]*)(`)$/.exec(authored)
+      if (!math) continue
+      const contentStart = node.start + math[1]!.length
+      const contentEnd = node.end - math[3]!.length
+      presentations.push({ kind: 'hide', from: node.start, to: contentStart })
+      presentations.push({ kind: 'mark', from: contentStart, to: contentEnd, className: 'carve-live-math' })
+      presentations.push({ kind: 'hide', from: contentEnd, to: node.end })
+      continue
+    }
+    if (node.type === 'comment') {
+      if (authored.startsWith('{%') && authored.endsWith('%}')) {
+        presentations.push({ kind: 'hide', from: node.start, to: node.start + 2 })
+        presentations.push({ kind: 'mark', from: node.start + 2, to: node.end - 2, className: 'carve-live-comment' })
+        presentations.push({ kind: 'hide', from: node.end - 2, to: node.end })
+      } else if (authored.startsWith('%%')) {
+        const marker = /^%%[ \t]*/.exec(authored)![0]
+        presentations.push({ kind: 'hide', from: node.start, to: node.start + marker.length })
+        presentations.push({ kind: 'mark', from: node.start + marker.length, to: node.end, className: 'carve-live-comment' })
+      }
+      continue
+    }
+    if (node.type === 'insert' || node.type === 'delete') {
+      const content = textBounds(node)
+      if (!content) continue
+      presentations.push({ kind: 'hide', from: node.start, to: content.start })
+      presentations.push({ kind: 'mark', from: content.start, to: content.end, className: node.type === 'insert' ? 'carve-live-insert' : 'carve-live-delete' })
+      presentations.push({ kind: 'hide', from: content.end, to: node.end })
+      continue
+    }
+    if (node.type === 'substitution') {
+      const substitution = /^\{~([\s\S]*)~>([\s\S]*)~\}$/.exec(authored)
+      if (!substitution) continue
+      const oldStart = node.start + 2
+      const oldEnd = oldStart + substitution[1]!.length
+      const newStart = oldEnd + 2
+      const newEnd = newStart + substitution[2]!.length
+      presentations.push({ kind: 'hide', from: node.start, to: oldStart })
+      presentations.push({ kind: 'mark', from: oldStart, to: oldEnd, className: 'carve-live-delete' })
+      presentations.push({ kind: 'hide', from: oldEnd, to: newStart })
+      presentations.push({ kind: 'mark', from: newStart, to: newEnd, className: 'carve-live-insert' })
+      presentations.push({ kind: 'hide', from: newEnd, to: node.end })
+      continue
+    }
+    if (node.type === 'critic_comment' && authored.startsWith('{#') && authored.endsWith('#}')) {
+      presentations.push({ kind: 'hide', from: node.start, to: node.start + 2 })
+      presentations.push({ kind: 'mark', from: node.start + 2, to: node.end - 2, className: 'carve-live-comment' })
+      presentations.push({ kind: 'hide', from: node.end - 2, to: node.end })
+      continue
+    }
     const classes: Record<string, string> = {
       emphasis: 'carve-live-emphasis', strong: 'carve-live-strong',
       strikethrough: 'carve-live-strikethrough', code: 'carve-live-code',
