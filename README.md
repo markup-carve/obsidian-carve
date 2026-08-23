@@ -33,7 +33,7 @@ and Live split remain the lossless modes.
 | Browser selection, typing, paste, and undo | Remain native while the visual surface is open |
 | YAML, TOML, or JSON frontmatter | Kept byte-for-byte outside the editable surface |
 | Tables | Editable, then written in Carve's canonical table spelling |
-| Code blocks | Protected with the current Carve importer; an upstream newline round-trip fix is pending |
+| Code blocks | Editable and round-tripped losslessly, including their trailing lines |
 | Wikilinks, embeds, tags, admonitions, footnotes, and custom attributes | Visual editing is locked because rendered HTML cannot preserve every semantic |
 | Raw HTML | Remains disabled on the vault rendering path |
 
