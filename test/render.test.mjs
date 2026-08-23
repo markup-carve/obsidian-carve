@@ -3,7 +3,7 @@ import test from 'node:test'
 import { carveToHtml } from '@markup-carve/carve'
 import { extractMetadata, withCrvExtension } from '../dist-test/metadata.js'
 import { renderCarve, rewriteWikiSyntax } from '../dist-test/render.js'
-import { normalizeVisualHtml, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from '../dist-test/wysiwyg.js'
+import { editOpaqueWithPrompts, normalizeVisualHtml, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from '../dist-test/wysiwyg.js'
 
 test('the renderer produces Obsidian-ready HTML', () => {
   const html = carveToHtml('# Human markup\n\nA *strong* idea and [link](https://example.com).', { allowRawHtml: false })
@@ -119,4 +119,24 @@ test('renderer-owned heading sections do not create visual import warnings', () 
   const visual = sourceToVisualDocument('# Heading\n\nParagraph.\n')
   assert.deepEqual(visual.diagnostics, [])
   assert.equal(visual.canonicalizes, false)
+})
+
+test('math and Mermaid are protected as lossless rich visual widgets', () => {
+  const source = 'Inline $`x + y`\n\n```mermaid\ngraph TD\nA --> B\n```\n'
+  const visual = sourceToVisualDocument(source)
+  assert.deepEqual(visual.opaque.map((item) => item.kind), ['math', 'mermaid'])
+  assert.match(visual.html, /class="math inline"/)
+  assert.match(visual.html, /language-mermaid/)
+  assert.equal(visualHtmlToSource(visual.html, '', visual.opaque).source, source)
+})
+
+test('protected constructs expose construct-aware visual editing fields', () => {
+  const callout = sourceToVisualDocument('::: note "Old"\nBody\n:::\n').opaque[0]
+  const answers = ['warning', 'New title', 'New body']
+  assert.equal(editOpaqueWithPrompts(callout, () => answers.shift()), '::: warning "New title"\nNew body\n:::')
+  const link = sourceToVisualDocument('[[Old|Label]]\n').opaque[0]
+  const linkAnswers = ['New', 'Readable']
+  assert.equal(editOpaqueWithPrompts(link, () => linkAnswers.shift()), '[[New|Readable]]')
+  const math = sourceToVisualDocument('$`x`\n').opaque[0]
+  assert.equal(editOpaqueWithPrompts(math, () => 'x + y'), '$`x + y`')
 })

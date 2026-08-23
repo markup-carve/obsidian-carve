@@ -11,7 +11,9 @@ The plugin registers `.crv` as its own Obsidian view and provides four modes:
   Live Preview. Authored markers hide away from the cursor and reappear exactly
   where they can be edited.
 - **Live split** keeps the CodeMirror source and rendered document side by side
-  and refreshes the preview as you type.
+  and refreshes the preview as you type. Its source pane deliberately remains a
+  conventional highlighted editor because the adjacent pane supplies the
+  visual feedback.
 - **Visual (experimental)** edits rendered prose directly and imports each
   change through Carve's safe HTML importer.
 
@@ -19,22 +21,23 @@ Use the book, pencil, and columns icons in the view header, or the matching
 `Carve: Open … view` commands.
 
 Visual mode tests WYSIWYG behavior in detail: headings, paragraphs, emphasis,
-links, quotes, lists, paste, native selection, and undo work directly in the
-rendered surface. Frontmatter bytes remain outside the editable DOM, conversion
+links, quotes, lists, paste, selection, and undo work directly in the rendered
+surface. Typing `### `, a list marker, or `> ` at the start of a paragraph
+immediately creates the corresponding rendered block. Frontmatter bytes remain outside the editable DOM, conversion
 warnings are visible, and **Revert source** discards the whole visual session.
-Because HTML import canonicalizes some advanced Carve-only constructs, Source
-and Live split remain the lossless modes.
+Advanced constructs remain lossless through protected rendered nodes.
 
 ### Visual-mode boundary
 
 | Behavior | Current result |
 | --- | --- |
 | Plain text, headings, emphasis, quotes, lists, and ordinary links | Editable and saved as Carve |
-| Browser selection, typing, paste, and undo | Remain native while the visual surface is open |
+| Selection, typing, paste, formatting, and undo | Use explicit Range/DOM operations and editor-owned history; no deprecated browser editing commands |
 | YAML, TOML, or JSON frontmatter | Kept byte-for-byte outside the editable surface |
 | Tables | Editable, then written in Carve's canonical table spelling |
 | Code blocks | Editable and round-tripped losslessly, including their trailing lines |
-| Wikilinks, embeds, tags, admonitions, footnotes, comments, CriticMarkup, raw inline, abbreviations, and custom attributes | Preserved byte-for-byte as visible islands while surrounding content remains editable; double-click or press Enter to edit exact source |
+| Wikilinks, embeds, tags, admonitions, footnotes, comments, CriticMarkup, raw inline, abbreviations, and custom attributes | Rendered in place and preserved byte-for-byte while surrounding content remains editable; double-click or press Enter for structured/exact editing |
+| Math and Mermaid | Rendered in the visual surface by Obsidian while their Carve source remains byte-exact |
 | Raw HTML | Remains disabled on the vault rendering path |
 
 The visual toolbar goes beyond default Markdown prose controls with underline,
@@ -50,6 +53,11 @@ right. Ambiguous column edits are disabled for
 merged-cell tables rather than guessing at span geometry. Empty rows and cells
 retain a visible editing height and caret target before any content is entered;
 their editor-only placeholders never enter the `.crv` file.
+
+Visual formatting is implemented with Selection, Range, and explicit DOM
+transformations rather than deprecated `execCommand` behavior. The editor owns
+its undo/redo snapshots, including toolbar actions and Markdown-style input
+rules.
 
 Source mode exposes the same common writing operations without leaving the
 lossless editor: all six heading levels; strong, emphasis, strike, highlight,
