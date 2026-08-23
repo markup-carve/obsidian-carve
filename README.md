@@ -34,7 +34,7 @@ and Live split remain the lossless modes.
 | YAML, TOML, or JSON frontmatter | Kept byte-for-byte outside the editable surface |
 | Tables | Editable, then written in Carve's canonical table spelling |
 | Code blocks | Editable and round-tripped losslessly, including their trailing lines |
-| Wikilinks, embeds, tags, admonitions, footnotes, and custom attributes | Visual editing is locked because rendered HTML cannot preserve every semantic |
+| Wikilinks, embeds, tags, admonitions, footnotes, comments, CriticMarkup, raw inline, abbreviations, and custom attributes | Preserved byte-for-byte as visible islands while surrounding content remains editable; double-click or press Enter to edit exact source |
 | Raw HTML | Remains disabled on the vault rendering path |
 
 The visual toolbar goes beyond default Markdown prose controls with underline,
@@ -59,8 +59,11 @@ on either side of the cursor. Invalid table operations give visible feedback.
 Resolved local and remote images render lazily in place while their exact source
 syntax remains available at the cursor.
 
-The plugin compares position-free ASTs before enabling the editor. When the
-round-trip changes semantics, the surface stays read-only unless the user
+The plugin uses positioned editor ranges to isolate constructs that HTML cannot
+round-trip. Those constructs remain visible as atomic protected islands while
+surrounding content stays editable, and their exact authored bytes are restored
+before saving. It then compares position-free ASTs before enabling the editor.
+When the remaining round-trip changes semantics, the surface stays read-only unless the user
 explicitly chooses **Enable lossy editing**; **Revert source** remains available
 for that session. A fully lossless WYSIWYG editor would patch positioned Carve
 AST nodes back into their original source ranges instead of round-tripping the

@@ -1,5 +1,7 @@
 # Changelog
 
+- Keep advanced Carve constructs as visible, non-editable, byte-exact islands so surrounding content remains safely editable in Visual mode.
+
 - Add source-native formatting toolbar and keyboard commands for strong, emphasis, strikethrough, inline code, links, paragraphs, and H1-H3. Commands edit only delimiter/line-prefix ranges and remain in CodeMirror undo history.
 - Add source-native row-before/after and column-before/after commands for simple pipe tables; ambiguous escaped/ragged grids are conservatively refused.
 - Add protected row/column deletion plus bullet, task, quote, fenced-code, and horizontal-rule source commands.
