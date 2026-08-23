@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { headingEdit, inlineFormatEdit, linkFormatEdit } from '../dist-test/editor-commands.js'
+import { headingEdit, inlineFormatEdit, linkFormatEdit, simpleTableEdit } from '../dist-test/editor-commands.js'
 
 function apply(source, changes) {
   for (const change of [...changes].reverse()) source = source.slice(0, change.from) + change.insert + source.slice(change.to)
@@ -29,4 +29,21 @@ test('heading edits replace only an existing marker or insert a new one', () => 
   assert.equal(apply('### Human\nnext', headingEdit('### Human\nnext', 0, 9, 2).changes), '## Human\nnext')
   assert.equal(apply('Human\nnext', headingEdit('Human\nnext', 0, 5, 3).changes), '### Human\nnext')
   assert.equal(apply('### Human\nnext', headingEdit('### Human\nnext', 0, 9, 0).changes), 'Human\nnext')
+})
+
+test('table row commands insert before and after the active row', () => {
+  const source = '| A | B |\n| x | y |'
+  assert.equal(apply(source, simpleTableEdit(source, 16, 'row-before').changes), '| A | B |\n|  |  |\n| x | y |')
+  assert.equal(apply(source, simpleTableEdit(source, 16, 'row-after').changes), '| A | B |\n| x | y |\n|  |  |')
+})
+
+test('table column commands modify every row on the selected axis', () => {
+  const source = '| A | B |\n| x | y |'
+  assert.equal(apply(source, simpleTableEdit(source, 16, 'column-before').changes), '| A |  | B |\n| x |  | y |')
+  assert.equal(apply(source, simpleTableEdit(source, 16, 'column-after').changes), '| A | B |  |\n| x | y |  |')
+})
+
+test('table commands refuse escaped and ragged grids', () => {
+  assert.equal(simpleTableEdit('| a \\| b |', 3, 'column-after'), null)
+  assert.equal(simpleTableEdit('| a | b |\n| x |', 3, 'column-after'), null)
 })

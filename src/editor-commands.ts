@@ -7,6 +7,8 @@ export interface FormatEdit {
   head: number
 }
 
+export type TableDirection = 'row-before' | 'row-after' | 'column-before' | 'column-after'
+
 /** Smallest-range source edit for toggling an authored inline delimiter. */
 export function inlineFormatEdit(source: string, from: number, to: number, open: string, close = open): FormatEdit {
   const wrapped = from >= open.length && source.slice(from - open.length, from) === open && source.slice(to, to + close.length) === close
@@ -35,6 +37,50 @@ export function linkFormatEdit(source: string, from: number, to: number): Format
   return { ...edit, anchor: destination, head: destination }
 }
 
+export function simpleTableEdit(source: string, at: number, direction: TableDirection): FormatEdit | null {
+  const lineStart = source.lastIndexOf('\n', Math.max(0, at - 1)) + 1
+  const lineEndMatch = source.indexOf('\n', at)
+  const lineEnd = lineEndMatch < 0 ? source.length : lineEndMatch
+  const line = source.slice(lineStart, lineEnd).replace(/\r$/, '')
+  if (!/^\|[^\r\n]*\|$/.test(line) || /\\\|/.test(line)) return null
+  const cells = line.slice(1, -1).split('|')
+  if (direction.startsWith('row-')) {
+    const row = `|${cells.map(() => '  ').join('|')}|`
+    const before = direction === 'row-before'
+    const from = before ? lineStart : lineEnd
+    const insert = before ? `${row}\n` : `\n${row}`
+    return { changes: [{ from, to: from, insert }], anchor: from + (before ? 2 : 3), head: from + (before ? 2 : 3) }
+  }
+  let blockStart = lineStart
+  while (blockStart > 0) {
+    const previousEnd = blockStart - 1
+    const previousStart = source.lastIndexOf('\n', Math.max(0, previousEnd - 1)) + 1
+    const previous = source.slice(previousStart, previousEnd).replace(/\r$/, '')
+    if (!/^\|[^\r\n]*\|$/.test(previous) || /\\\|/.test(previous)) break
+    blockStart = previousStart
+  }
+  let blockEnd = lineEnd
+  while (blockEnd < source.length) {
+    const nextStart = blockEnd + 1
+    const nextBreak = source.indexOf('\n', nextStart)
+    const nextEnd = nextBreak < 0 ? source.length : nextBreak
+    const next = source.slice(nextStart, nextEnd).replace(/\r$/, '')
+    if (!/^\|[^\r\n]*\|$/.test(next) || /\\\|/.test(next)) break
+    blockEnd = nextEnd
+  }
+  const relative = Math.max(1, Math.min(line.length - 1, at - lineStart))
+  const cellIndex = line.slice(1, relative).split('|').length - 1 + (direction === 'column-after' ? 1 : 0)
+  const block = source.slice(blockStart, blockEnd)
+  const lines = block.split('\n')
+  if (lines.some((row) => row.slice(1, -1).split('|').length !== cells.length)) return null
+  const replacement = lines.map((row) => {
+    const rowCells = row.replace(/\r$/, '').slice(1, -1).split('|')
+    rowCells.splice(cellIndex, 0, '  ')
+    return `|${rowCells.join('|')}|${row.endsWith('\r') ? '\r' : ''}`
+  }).join('\n')
+  return { changes: [{ from: blockStart, to: blockEnd, insert: replacement }], anchor: at, head: at }
+}
+
 function applyInline(open: string, close = open): Command {
   return (view: EditorView): boolean => {
     const selection = view.state.selection.main
@@ -60,6 +106,13 @@ export const createLink: Command = (view): boolean => {
   const selection = view.state.selection.main
   const edit = linkFormatEdit(view.state.doc.toString(), selection.from, selection.to)
   view.dispatch({ changes: edit.changes, selection: EditorSelection.single(edit.anchor, edit.head), scrollIntoView: true })
+  return true
+}
+
+export function editTable(view: EditorView, direction: TableDirection): boolean {
+  const edit = simpleTableEdit(view.state.doc.toString(), view.state.selection.main.head, direction)
+  if (!edit) return false
+  view.dispatch({ changes: edit.changes, scrollIntoView: true })
   return true
 }
 

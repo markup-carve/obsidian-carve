@@ -7,7 +7,7 @@ import { extractMetadata, withCrvExtension, type CarveMetadata } from './metadat
 import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { carveLivePreview } from './live-preview'
-import { carveEditorCommands, createLink, setHeading, toggleCode, toggleEmphasis, toggleStrike, toggleStrong } from './editor-commands'
+import { carveEditorCommands, createLink, editTable, setHeading, toggleCode, toggleEmphasis, toggleStrike, toggleStrong } from './editor-commands'
 import { sourceToVisualDocument, visualHtmlToSource } from './wysiwyg'
 import { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, parseTableSize, selectionCell, setTableCaption, toggleTableHeader } from './visual-table'
 
@@ -91,6 +91,10 @@ export class CarveView extends TextFileView {
     action('H1', 'Heading 1', (view) => setHeading(view, 1))
     action('H2', 'Heading 2', (view) => setHeading(view, 2))
     action('H3', 'Heading 3', (view) => setHeading(view, 3))
+    action('↑ Row', 'Insert table row before', (view) => editTable(view, 'row-before'))
+    action('↓ Row', 'Insert table row after', (view) => editTable(view, 'row-after'))
+    action('← Col', 'Insert table column before', (view) => editTable(view, 'column-before'))
+    action('→ Col', 'Insert table column after', (view) => editTable(view, 'column-after'))
   }
 
   private async draw(): Promise<void> {
