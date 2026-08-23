@@ -44,8 +44,9 @@ Tables have their own contextual toolbar: insert a chosen `rows × columns`
 size, add a row or column before/after the selected cell, delete either axis,
 toggle header cells, edit the caption, undo structural operations, or press Tab
 in the last cell to append a row. Rows and columns can also be moved in either
-direction without copying cell contents, and body rows can be sorted by the
-active column in either direction. Ambiguous column edits are disabled for
+direction without copying cell contents, body rows can be sorted by the active
+column in either direction, and whole columns can be aligned left, center, or
+right. Ambiguous column edits are disabled for
 merged-cell tables rather than guessing at span geometry. Empty rows and cells
 retain a visible editing height and caret target before any content is entered;
 their editor-only placeholders never enter the `.crv` file.

@@ -113,6 +113,14 @@ export function sortTableColumn(cell: HTMLTableCellElement, descending = false):
   return activeRow.cells[index] ?? null
 }
 
+export function alignTableColumn(cell: HTMLTableCellElement, alignment: 'left' | 'center' | 'right'): HTMLTableCellElement | null {
+  const table = cell.closest('table')
+  if (!table || !isSimpleTable(table)) return null
+  const index = cell.cellIndex
+  for (const row of Array.from(table.rows)) row.cells[index]?.setAttribute('align', alignment)
+  return cell
+}
+
 export function toggleTableHeader(cell: HTMLTableCellElement): HTMLTableCellElement {
   const replacement = document.createElement(cell.tagName === 'TH' ? 'td' : 'th') as HTMLTableCellElement
   for (const attribute of Array.from(cell.attributes)) replacement.setAttribute(attribute.name, attribute.value)

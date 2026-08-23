@@ -11,7 +11,7 @@ Object.assign(globalThis, {
   HTMLTableElement: window.HTMLTableElement,
 })
 
-const { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, setTableCaption, sortTableColumn, toggleTableHeader } = await import('../dist-test/visual-table.js')
+const { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, setTableCaption, sortTableColumn, toggleTableHeader } = await import('../dist-test/visual-table.js')
 
 test('parses and bounds requested table dimensions', () => {
   assert.deepEqual(parseTableSize('3 × 4'), [3, 4])
@@ -75,6 +75,13 @@ test('sorts table body rows while preserving the header and active cell', () => 
   assert.deepEqual(Array.from(table.rows, (row) => row.cells[0].textContent).slice(1), ['2', '10', 'Alpha'])
   assert.equal(sortTableColumn(active, true)?.textContent, '10')
   assert.deepEqual(Array.from(table.rows, (row) => row.cells[0].textContent).slice(1), ['Alpha', '10', '2'])
+})
+
+test('aligns the complete active column with importer-compatible attributes', () => {
+  const table = createTable(3, 2)
+  const active = table.rows[1].cells[1]
+  assert.equal(alignTableColumn(active, 'center'), active)
+  assert.deepEqual(Array.from(table.rows, (row) => row.cells[1].getAttribute('align')), ['center', 'center', 'center'])
 })
 
 test('never deletes the final row or final column', () => {
