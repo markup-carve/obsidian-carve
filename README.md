@@ -45,7 +45,7 @@ strikethrough, highlight, superscript, subscript, all six heading levels,
 inline and block code, link removal, horizontal rules, and formatting reset.
 Tables have their own contextual toolbar: insert a chosen `rows × columns`
 size, add a row or column before/after the selected cell, delete either axis,
-toggle header cells, edit the caption, undo structural operations, or press Tab
+toggle individual, row, or column headers, edit the caption, use document undo for structural operations, or press Tab
 in the last cell to append a row. Rows and columns can also be moved in either
 direction without copying cell contents, body rows can be sorted by the active
 column in either direction, and whole columns can be aligned left, center, or
@@ -57,11 +57,16 @@ their editor-only placeholders never enter the `.crv` file.
 Visual formatting is implemented with Selection, Range, and explicit DOM
 transformations rather than deprecated `execCommand` behavior. The editor owns
 its undo/redo snapshots, including toolbar actions and Markdown-style input
-rules.
+rules, and restores the authored selection with each snapshot. Inline formats
+show their active state and can be enabled at a collapsed caret before typing.
+HTML paste passes through a conservative semantic allowlist instead of letting
+the browser inject arbitrary presentation markup.
 
 List keyboard behavior is consistent across modes. In Visual mode, Tab and
 Shift+Tab nest or unnest the active item, Enter creates the next item (including
-an unchecked task box), and Enter on an empty item exits or outdents the list.
+an unchecked task box), Enter in the middle splits at the caret, Backspace at
+the boundary joins or outdents, and Enter on an empty item exits or outdents the
+list. Task boxes are directly clickable and save their checked state.
 Source and Live split apply the equivalent operations to authored indentation
 and continue bullet, numbered, and task markers; selected source rows indent as
 a group.
@@ -77,7 +82,9 @@ syntax remains available at the cursor.
 The plugin uses positioned editor ranges to isolate constructs that HTML cannot
 round-trip. Those constructs remain visible as atomic protected islands while
 surrounding content stays editable, and their exact authored bytes are restored
-before saving. It then compares position-free ASTs before enabling the editor.
+before saving. Double-clicking one opens a multiline exact-source editor with a
+live rendered preview; Enter retains the concise construct-aware field editor.
+It then compares position-free ASTs before enabling the editor.
 When the remaining round-trip changes semantics, the surface stays read-only unless the user
 explicitly chooses **Enable lossy editing**; **Revert source** remains available
 for that session. A fully lossless WYSIWYG editor would patch positioned Carve

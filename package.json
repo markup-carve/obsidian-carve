@@ -10,7 +10,7 @@
     "build": "node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
     "test": "npm run build:test && node --test",
-    "build:test": "esbuild src/metadata.ts src/render.ts src/wysiwyg.ts src/visual-table.ts src/visual-editing.ts src/live-preview.ts src/editor-commands.ts --platform=node --format=esm --outdir=dist-test",
+    "build:test": "esbuild src/metadata.ts src/render.ts src/wysiwyg.ts src/visual-table.ts src/visual-editing.ts src/visual-history.ts src/live-preview.ts src/editor-commands.ts --platform=node --format=esm --outdir=dist-test",
     "typecheck": "tsc --noEmit",
     "test:all": "npm test && npm run typecheck && npm run build"
   },

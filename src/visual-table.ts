@@ -129,6 +129,19 @@ export function toggleTableHeader(cell: HTMLTableCellElement): HTMLTableCellElem
   return replacement
 }
 
+export function toggleTableHeaderAxis(cell: HTMLTableCellElement, axis: 'row' | 'column'): HTMLTableCellElement | null {
+  const table = cell.closest('table'); const row = cell.parentElement as HTMLTableRowElement | null
+  if (!table || !row || !isSimpleTable(table)) return null
+  const cells = axis === 'row' ? Array.from(row.cells) : Array.from(table.rows).map((candidate) => candidate.cells[cell.cellIndex]).filter(Boolean) as HTMLTableCellElement[]
+  const makeHeader = !cells.every((candidate) => candidate.tagName === 'TH')
+  let active: HTMLTableCellElement | null = null
+  for (const candidate of cells) {
+    if ((candidate.tagName === 'TH') === makeHeader) { if (candidate === cell) active = candidate; continue }
+    const replacement = toggleTableHeader(candidate); if (candidate === cell) active = replacement
+  }
+  return active ?? cell
+}
+
 export function setTableCaption(table: HTMLTableElement, text: string): HTMLTableCaptionElement | null {
   table.caption?.remove()
   if (!text.trim()) return null
