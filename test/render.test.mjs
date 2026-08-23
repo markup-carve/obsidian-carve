@@ -60,6 +60,12 @@ test('visual table caret placeholders never enter Carve source', () => {
   assert.equal(edited.source, '|= A |\n| |\n')
 })
 
+test('visual table alignment survives import as Carve cell semantics', () => {
+  const result = visualHtmlToSource('<table><tbody><tr><td align="center">A</td><td>B</td></tr><tr><td align="center">C</td><td>D</td></tr></tbody></table>')
+  assert.equal(result.source, '|{align=center} A | B |\n|{align=center} C | D |\n')
+  assert.deepEqual(result.diagnostics, [])
+})
+
 test('empty visual rows become ordinary source spacing, not hard breaks', () => {
   const html = '<div><br></div><ul><li>sdfdsf</li><li>sdfsdf</li></ul><p><br></p>'
   assert.equal(visualHtmlToSource(html).source, '- sdfdsf\n- sdfsdf\n')

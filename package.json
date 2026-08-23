@@ -10,7 +10,7 @@
     "build": "node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs",
     "test": "npm run build:test && node --test",
-    "build:test": "esbuild src/metadata.ts src/render.ts src/wysiwyg.ts src/visual-table.ts src/live-preview.ts --platform=node --format=esm --outdir=dist-test",
+    "build:test": "esbuild src/metadata.ts src/render.ts src/wysiwyg.ts src/visual-table.ts src/live-preview.ts src/editor-commands.ts --platform=node --format=esm --outdir=dist-test",
     "typecheck": "tsc --noEmit",
     "test:all": "npm test && npm run typecheck && npm run build"
   },
@@ -19,7 +19,7 @@
     "@codemirror/state": "6.5.0",
     "@codemirror/view": "6.38.6",
     "@lezer/highlight": "^1.2.3",
-    "@markup-carve/carve": "github:markup-carve/carve-js#7854e1c3",
+    "@markup-carve/carve": "github:markup-carve/carve-js#3ba8ba327d79d51b826ae28959c2726d79cb0a65",
     "codemirror": "^6.0.2",
     "smol-toml": "1.8.0",
     "yaml": "^2.9.0"

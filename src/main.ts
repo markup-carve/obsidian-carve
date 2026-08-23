@@ -6,9 +6,10 @@ import { CarveIndex } from './indexer'
 import { extractMetadata, withCrvExtension, type CarveMetadata } from './metadata'
 import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
-import { carveLivePreview } from './live-preview'
+import { createCarveLivePreview } from './live-preview'
+import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
 import { sourceToVisualDocument, visualHtmlToSource } from './wysiwyg'
-import { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, parseTableSize, selectionCell, setTableCaption, toggleTableHeader } from './visual-table'
+import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, toggleTableHeader } from './visual-table'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
 export type CarveViewMode = 'preview' | 'source' | 'split' | 'visual'
@@ -60,11 +61,18 @@ export class CarveView extends TextFileView {
   }
 
   private createEditor(parent: HTMLElement, livePreview?: HTMLElement): void {
+    const toolbar = parent.createDiv({ cls: 'carve-source-toolbar', attr: { role: 'toolbar', 'aria-label': 'Source formatting' } })
+    const status = parent.createDiv({ cls: 'carve-source-status', attr: { role: 'status', 'aria-live': 'polite' } })
+    const host = parent.createDiv({ cls: 'carve-source-editor' })
     this.editor = new EditorView({
-      parent,
+      parent: host,
       state: EditorState.create({
         doc: this.source,
-        extensions: [basicSetup, carveLanguage, carveHighlighting, carveLivePreview, EditorView.lineWrapping,
+        extensions: [basicSetup, carveLanguage, carveHighlighting, createCarveLivePreview((destination) => {
+          if (/^https?:\/\//i.test(destination)) return destination
+          const target = this.plugin.app.metadataCache.getFirstLinkpathDest(destination, this.file?.path ?? '')
+          return target ? this.plugin.app.vault.getResourcePath(target) : null
+        }), carveEditorCommands, EditorView.lineWrapping,
           EditorView.contentAttributes.of({ 'aria-label': 'Carve source' }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return
@@ -75,6 +83,43 @@ export class CarveView extends TextFileView {
           })],
       }),
     })
+    const action = (label: string, title: string, command: (view: EditorView) => boolean): void => {
+      const button = toolbar.createEl('button', { text: label, attr: { type: 'button', title, 'aria-label': title } })
+      button.addEventListener('mousedown', (event) => {
+        event.preventDefault()
+        const applied = this.editor ? command(this.editor) : false
+        status.setText(applied ? '' : 'That action is unavailable here. Place the cursor in a compatible element; the final table row and column are protected.')
+        status.toggleClass('is-warning', !applied)
+        this.editor?.focus()
+      })
+    }
+    action('B', 'Strong (Ctrl/Cmd+B)', toggleStrong)
+    action('I', 'Emphasis (Ctrl/Cmd+I)', toggleEmphasis)
+    action('S', 'Strikethrough', toggleStrike)
+    action('=', 'Highlight', toggleHighlight)
+    action('`c`', 'Inline code', toggleCode)
+    action('Link', 'Create link (Ctrl/Cmd+K)', createLink)
+    action('P', 'Paragraph', (view) => setHeading(view, 0))
+    action('H1', 'Heading 1', (view) => setHeading(view, 1))
+    action('H2', 'Heading 2', (view) => setHeading(view, 2))
+    action('H3', 'Heading 3', (view) => setHeading(view, 3))
+    action('H4', 'Heading 4', (view) => setHeading(view, 4))
+    action('H5', 'Heading 5', (view) => setHeading(view, 5))
+    action('H6', 'Heading 6', (view) => setHeading(view, 6))
+    action('Table', 'Insert a 2 × 2 table', insertSimpleTable)
+    action('↑ Row', 'Insert table row before', (view) => editTable(view, 'row-before'))
+    action('↓ Row', 'Insert table row after', (view) => editTable(view, 'row-after'))
+    action('← Col', 'Insert table column before', (view) => editTable(view, 'column-before'))
+    action('→ Col', 'Insert table column after', (view) => editTable(view, 'column-after'))
+    action('− Row', 'Delete table row', (view) => editTable(view, 'delete-row'))
+    action('− Col', 'Delete table column', (view) => editTable(view, 'delete-column'))
+    action('•', 'Toggle bulleted list item', (view) => setLinePrefix(view, 'bullet'))
+    action('1.', 'Toggle numbered list item', (view) => setLinePrefix(view, 'ordered'))
+    action('☐', 'Toggle task item', (view) => setLinePrefix(view, 'task'))
+    action('❯', 'Toggle block quote', (view) => setLinePrefix(view, 'quote'))
+    action('<>', 'Wrap selection in code fence', wrapCodeBlock)
+    action('Callout', 'Wrap selection in a note callout', wrapCallout)
+    action('―', 'Insert horizontal rule', insertHorizontalRule)
   }
 
   private async draw(): Promise<void> {
@@ -175,6 +220,15 @@ export class CarveView extends TextFileView {
     tableAction('→ Col', (cell) => addTableColumn(cell, 'after')[(cell.parentElement as HTMLTableRowElement).rowIndex] ?? null)
     tableAction('− Row', (cell) => { const next = (cell.parentElement?.nextElementSibling ?? cell.parentElement?.previousElementSibling)?.children[cell.cellIndex] as HTMLTableCellElement | undefined; return deleteTableRow(cell) ? next ?? null : null })
     tableAction('− Col', (cell) => { const row = cell.parentElement as HTMLTableRowElement; const next = row.cells[cell.cellIndex + 1] ?? row.cells[cell.cellIndex - 1]; return deleteTableColumn(cell) ? next ?? null : null })
+    tableAction('↑ Move', (cell) => moveTableRow(cell, 'before'))
+    tableAction('↓ Move', (cell) => moveTableRow(cell, 'after'))
+    tableAction('← Move', (cell) => moveTableColumn(cell, 'before'))
+    tableAction('→ Move', (cell) => moveTableColumn(cell, 'after'))
+    tableAction('A→Z', (cell) => sortTableColumn(cell))
+    tableAction('Z→A', (cell) => sortTableColumn(cell, true))
+    tableAction('Align ←', (cell) => alignTableColumn(cell, 'left'))
+    tableAction('Align ↔', (cell) => alignTableColumn(cell, 'center'))
+    tableAction('Align →', (cell) => alignTableColumn(cell, 'right'))
     tableAction('Header', (cell) => toggleTableHeader(cell))
     const caption = tableTools.createEl('button', { text: 'Caption', attr: { type: 'button' } })
     caption.addEventListener('mousedown', (event) => {

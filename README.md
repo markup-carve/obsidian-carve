@@ -7,7 +7,9 @@ The plugin registers `.crv` as its own Obsidian view and provides four modes:
 
 - **Reading** renders the document with `@markup-carve/carve`.
 - **Source** uses a full CodeMirror 6 editor with Carve highlighting, line
-  numbers, search, history, selections, and standard editing keys.
+  numbers, search, history, selections, standard editing keys, and semantic
+  Live Preview. Authored markers hide away from the cursor and reappear exactly
+  where they can be edited.
 - **Live split** keeps the CodeMirror source and rendered document side by side
   and refreshes the preview as you type.
 - **Visual (experimental)** edits rendered prose directly and imports each
@@ -31,7 +33,7 @@ and Live split remain the lossless modes.
 | Browser selection, typing, paste, and undo | Remain native while the visual surface is open |
 | YAML, TOML, or JSON frontmatter | Kept byte-for-byte outside the editable surface |
 | Tables | Editable, then written in Carve's canonical table spelling |
-| Code blocks | Protected with the current Carve importer; an upstream newline round-trip fix is pending |
+| Code blocks | Editable and round-tripped losslessly, including their trailing lines |
 | Wikilinks, embeds, tags, admonitions, footnotes, and custom attributes | Visual editing is locked because rendered HTML cannot preserve every semantic |
 | Raw HTML | Remains disabled on the vault rendering path |
 
@@ -41,10 +43,21 @@ inline and block code, link removal, horizontal rules, and formatting reset.
 Tables have their own contextual toolbar: insert a chosen `rows × columns`
 size, add a row or column before/after the selected cell, delete either axis,
 toggle header cells, edit the caption, undo structural operations, or press Tab
-in the last cell to append a row. Ambiguous column edits are disabled for
+in the last cell to append a row. Rows and columns can also be moved in either
+direction without copying cell contents, body rows can be sorted by the active
+column in either direction, and whole columns can be aligned left, center, or
+right. Ambiguous column edits are disabled for
 merged-cell tables rather than guessing at span geometry. Empty rows and cells
 retain a visible editing height and caret target before any content is entered;
 their editor-only placeholders never enter the `.crv` file.
+
+Source mode exposes the same common writing operations without leaving the
+lossless editor: all six heading levels; strong, emphasis, strike, highlight,
+inline and fenced code; links; bullet, numbered, and task lists; quotes;
+callouts; horizontal rules; table creation; and row/column insertion or deletion
+on either side of the cursor. Invalid table operations give visible feedback.
+Resolved local and remote images render lazily in place while their exact source
+syntax remains available at the cursor.
 
 The plugin compares position-free ASTs before enabling the editor. When the
 round-trip changes semantics, the surface stays read-only unless the user
