@@ -9,7 +9,7 @@ import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
 import { sourceToVisualDocument, visualHtmlToSource } from './wysiwyg'
-import { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, toggleTableHeader } from './visual-table'
+import { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, toggleTableHeader } from './visual-table'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
 export type CarveViewMode = 'preview' | 'source' | 'split' | 'visual'
@@ -224,6 +224,8 @@ export class CarveView extends TextFileView {
     tableAction('↓ Move', (cell) => moveTableRow(cell, 'after'))
     tableAction('← Move', (cell) => moveTableColumn(cell, 'before'))
     tableAction('→ Move', (cell) => moveTableColumn(cell, 'after'))
+    tableAction('A→Z', (cell) => sortTableColumn(cell))
+    tableAction('Z→A', (cell) => sortTableColumn(cell, true))
     tableAction('Header', (cell) => toggleTableHeader(cell))
     const caption = tableTools.createEl('button', { text: 'Caption', attr: { type: 'button' } })
     caption.addEventListener('mousedown', (event) => {

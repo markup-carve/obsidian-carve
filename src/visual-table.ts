@@ -97,6 +97,22 @@ export function moveTableColumn(cell: HTMLTableCellElement, direction: TableDire
   return table.rows[(cell.parentElement as HTMLTableRowElement).rowIndex]?.cells[to] ?? null
 }
 
+export function sortTableColumn(cell: HTMLTableCellElement, descending = false): HTMLTableCellElement | null {
+  const table = cell.closest('table')
+  const body = cell.parentElement?.parentElement
+  if (!table || !body || body.tagName !== 'TBODY' || !isSimpleTable(table)) return null
+  const index = cell.cellIndex
+  const rows = Array.from(body.children).filter((row): row is HTMLTableRowElement => row instanceof HTMLTableRowElement)
+  const activeRow = cell.parentElement as HTMLTableRowElement
+  rows.sort((left, right) => {
+    const a = left.cells[index]?.textContent?.trim() ?? ''
+    const b = right.cells[index]?.textContent?.trim() ?? ''
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }) * (descending ? -1 : 1)
+  })
+  body.append(...rows)
+  return activeRow.cells[index] ?? null
+}
+
 export function toggleTableHeader(cell: HTMLTableCellElement): HTMLTableCellElement {
   const replacement = document.createElement(cell.tagName === 'TH' ? 'td' : 'th') as HTMLTableCellElement
   for (const attribute of Array.from(cell.attributes)) replacement.setAttribute(attribute.name, attribute.value)
