@@ -11,7 +11,7 @@ Object.assign(globalThis, {
   HTMLTableElement: window.HTMLTableElement,
 })
 
-const { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, setTableCaption, sortTableColumn, toggleTableHeader } = await import('../dist-test/visual-table.js')
+const { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, setTableCaption, sortTableColumn, toggleTableHeader, toggleTableHeaderAxis } = await import('../dist-test/visual-table.js')
 
 test('parses and bounds requested table dimensions', () => {
   assert.deepEqual(parseTableSize('3 × 4'), [3, 4])
@@ -105,6 +105,16 @@ test('toggles row/column headers without losing cell content', () => {
   assert.equal(header.tagName, 'TH')
   assert.equal(header.textContent, 'Row label')
   assert.equal(toggleTableHeader(header).tagName, 'TD')
+})
+
+test('toggles complete header rows and columns from the active cell', () => {
+  const table = createTable(2, 2); table.rows[0].cells[0].textContent = 'A'; table.rows[1].cells[0].textContent = 'B'
+  const rowCell = toggleTableHeaderAxis(table.rows[0].cells[0], 'row')
+  assert.deepEqual(Array.from(table.rows[0].cells).map((cell) => cell.tagName), ['TD', 'TD'])
+  assert.equal(rowCell.textContent, 'A')
+  toggleTableHeaderAxis(table.rows[1].cells[0], 'column')
+  assert.deepEqual(Array.from(table.rows).map((row) => row.cells[0].tagName), ['TH', 'TH'])
+  assert.equal(table.rows[1].cells[0].textContent, 'B')
 })
 
 test('adds, updates, and removes a table caption', () => {

@@ -1,16 +1,17 @@
 import { basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { FuzzySuggestModal, Plugin, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type FuzzyMatch } from 'obsidian'
+import { FuzzySuggestModal, Modal, Plugin, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
 import { CarveIndex } from './indexer'
 import { extractMetadata, withCrvExtension, type CarveMetadata } from './metadata'
 import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
-import { editOpaqueWithPrompts, renderOpaqueConstruct, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from './wysiwyg'
-import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, toggleTableHeader } from './visual-table'
-import { applyVisualInputRule, clearVisualFormatting, continueVisualList, formatVisualBlock, indentVisualListItem, insertPlainText, insertVisualRule, toggleVisualList, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
+import { editOpaqueWithPrompts, renderOpaqueConstruct, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource, type OpaqueConstruct } from './wysiwyg'
+import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, toggleTableHeader, toggleTableHeaderAxis } from './visual-table'
+import { applyVisualInputRule, backspaceVisualListItem, clearVisualFormatting, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, insertVisualRule, toggleVisualList, toggleVisualTask, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
+import { captureVisualSnapshot, restoreVisualSnapshot, type VisualSnapshot } from './visual-history'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
 export type CarveViewMode = 'preview' | 'source' | 'split' | 'visual'
@@ -22,6 +23,26 @@ class CarveSearchModal extends FuzzySuggestModal<CarveSearchEntry> {
   getItemText(item: CarveSearchEntry): string { return item.searchable }
   renderSuggestion(match: FuzzyMatch<CarveSearchEntry>, el: HTMLElement): void { el.createDiv({ text: match.item.path }); el.createDiv({ cls: 'suggestion-note', text: match.item.searchable.slice(match.item.path.length).trim() }) }
   onChooseItem(item: CarveSearchEntry): void { void this.plugin.openCarve(item.path) }
+}
+
+class CarveConstructModal extends Modal {
+  constructor(app: App, private item: OpaqueConstruct, private save: (source: string) => void) { super(app) }
+  onOpen(): void {
+    this.titleEl.setText(`Edit ${this.item.kind.replace(/_/g, ' ')}`)
+    this.contentEl.addClass('carve-construct-editor')
+    const editor = this.contentEl.createEl('textarea', { attr: { 'aria-label': 'Exact Carve source', rows: '10', spellcheck: 'false' } })
+    editor.value = this.item.source
+    this.contentEl.createDiv({ cls: 'carve-construct-preview-label', text: 'Live preview' })
+    const preview = this.contentEl.createDiv({ cls: ['carve-construct-preview', 'markdown-rendered'] })
+    const update = (): void => { preview.innerHTML = renderOpaqueConstruct({ ...this.item, source: editor.value }) }
+    editor.addEventListener('input', update); update()
+    const actions = this.contentEl.createDiv({ cls: 'carve-construct-actions' })
+    const cancel = actions.createEl('button', { text: 'Cancel', attr: { type: 'button' } }); cancel.addEventListener('click', () => this.close())
+    const save = actions.createEl('button', { text: 'Save', cls: 'mod-cta', attr: { type: 'button' } })
+    save.addEventListener('click', () => { this.save(editor.value); this.close() })
+    editor.addEventListener('keydown', (event) => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') { event.preventDefault(); save.click() } })
+    editor.focus(); editor.setSelectionRange(0, editor.value.length)
+  }
 }
 
 export class CarveView extends TextFileView {
@@ -149,8 +170,8 @@ export class CarveView extends TextFileView {
     surface.innerHTML = visual.html
     void this.decorateVisualRich(surface)
     ensureTablePlaceholders(surface)
-    const status = shell.createDiv({ cls: 'carve-visual-status' })
-    const history = [surface.innerHTML]
+    const status = shell.createDiv({ cls: 'carve-visual-status', attr: { role: 'status', 'aria-live': 'polite' } })
+    const history: VisualSnapshot[] = [captureVisualSnapshot(surface)]
     let historyIndex = 0
     if (visual.semanticLoss) {
       surface.contentEditable = 'false'
@@ -159,7 +180,7 @@ export class CarveView extends TextFileView {
       unlock.addEventListener('click', () => { surface.contentEditable = 'true'; shell.removeClass('is-visual-locked'); unlock.remove(); status.setText('Lossy editing enabled for this session. Revert source remains available.'); surface.focus() })
     }
     const sync = (recordHistory = true): void => {
-      if (recordHistory && history[historyIndex] !== surface.innerHTML) { history.splice(historyIndex + 1); history.push(surface.innerHTML); historyIndex = history.length - 1 }
+      if (recordHistory && history[historyIndex]?.html !== surface.innerHTML) { history.splice(historyIndex + 1); history.push(captureVisualSnapshot(surface)); historyIndex = history.length - 1 }
       const result = visualHtmlToSource(surface.innerHTML, visual.frontmatter, visual.opaque)
       this.source = result.source
       status.setText(result.diagnostics.length ? `Imported with ${result.diagnostics.length} conversion warning(s).` : 'Saved as Carve source.')
@@ -175,30 +196,41 @@ export class CarveView extends TextFileView {
       if (!range) return
       const selection = document.getSelection(); selection?.removeAllRanges(); selection?.addRange(range)
     }
-    const commands: Array<[string, string, () => boolean]> = [
-      ['B', 'Bold', () => wrapVisualSelection(surface, 'strong')], ['I', 'Italic', () => wrapVisualSelection(surface, 'em')], ['U', 'Underline', () => wrapVisualSelection(surface, 'u')], ['S', 'Strikethrough', () => wrapVisualSelection(surface, 's')],
+    const commandButtons = new Map<string, HTMLButtonElement>()
+    const pendingFormats = new Set<string>()
+    const inlineCommand = (tag: string): boolean => {
+      const selection = document.getSelection()
+      if (selection?.isCollapsed && surface.contains(selection.anchorNode)) {
+        if (pendingFormats.has(tag)) pendingFormats.delete(tag); else pendingFormats.add(tag)
+        updateTableTools?.(); return true
+      }
+      return wrapVisualSelection(surface, tag)
+    }
+    const commands: Array<[string, string, () => boolean, string?]> = [
+      ['B', 'Bold', () => inlineCommand('strong'), 'strong'], ['I', 'Italic', () => inlineCommand('em'), 'em'], ['U', 'Underline', () => inlineCommand('u'), 'u'], ['S', 'Strikethrough', () => inlineCommand('s'), 's'],
       ['P', 'Paragraph', () => formatVisualBlock(surface, 'p')], ['H1', 'Heading 1', () => formatVisualBlock(surface, 'h1')], ['H2', 'Heading 2', () => formatVisualBlock(surface, 'h2')], ['H3', 'Heading 3', () => formatVisualBlock(surface, 'h3')], ['H4', 'Heading 4', () => formatVisualBlock(surface, 'h4')], ['H5', 'Heading 5', () => formatVisualBlock(surface, 'h5')], ['H6', 'Heading 6', () => formatVisualBlock(surface, 'h6')], ['<>', 'Code block', () => formatVisualBlock(surface, 'pre')],
-      ['x²', 'Superscript', () => wrapVisualSelection(surface, 'sup')], ['x₂', 'Subscript', () => wrapVisualSelection(surface, 'sub')], ['•', 'Bulleted list', () => toggleVisualList(surface, false)], ['1.', 'Numbered list', () => toggleVisualList(surface, true)], ['❯', 'Block quote', () => formatVisualBlock(surface, 'blockquote')],
+      ['x²', 'Superscript', () => inlineCommand('sup'), 'sup'], ['x₂', 'Subscript', () => inlineCommand('sub'), 'sub'], ['•', 'Bulleted list', () => toggleVisualList(surface, false)], ['1.', 'Numbered list', () => toggleVisualList(surface, true)], ['❯', 'Block quote', () => formatVisualBlock(surface, 'blockquote')],
+      ['`c`', 'Inline code', () => inlineCommand('code'), 'code'], ['=', 'Highlight', () => inlineCommand('mark'), 'mark'],
       ['―', 'Horizontal rule', () => insertVisualRule(surface)], ['Tx', 'Remove formatting', () => clearVisualFormatting(surface)],
     ]
-    for (const [caption, label, command] of commands) {
+    for (const [caption, label, command, activeTag] of commands) {
       const button = toolbar.createEl('button', { text: caption, attr: { type: 'button', 'aria-label': label, title: label } })
       button.addEventListener('mousedown', (event) => { event.preventDefault(); if (command()) sync(); else status.setText('Select compatible content first.'); surface.focus() })
-    }
-    for (const [caption, label, tag] of [['`c`', 'Inline code', 'code'], ['=', 'Highlight', 'mark']] as const) {
-      const button = toolbar.createEl('button', { text: caption, attr: { type: 'button', title: label, 'aria-label': label } })
-      button.addEventListener('mousedown', (event) => { event.preventDefault(); if (wrapVisualSelection(surface, tag)) sync(); else status.setText('Select text first.'); surface.focus() })
+      if (activeTag) commandButtons.set(activeTag, button)
     }
     const link = toolbar.createEl('button', { text: 'Link', attr: { type: 'button', title: 'Create link' } })
-    link.addEventListener('mousedown', (event) => { event.preventDefault(); const range = savedRange(); const url = window.prompt('Link URL'); restoreRange(range); if (url && wrapVisualSelection(surface, 'a', { href: url })) sync(); surface.focus() })
+    link.addEventListener('mousedown', (event) => {
+      event.preventDefault(); const range = savedRange(); const url = window.prompt('Link URL'); if (!url) return
+      const label = range?.collapsed ? window.prompt('Link text', url) : null
+      restoreRange(range); if (insertVisualLink(surface, url, label ?? url)) sync(); surface.focus()
+    })
     const unlink = toolbar.createEl('button', { text: 'Unlink', attr: { type: 'button', title: 'Remove link' } })
     unlink.addEventListener('mousedown', (event) => { event.preventDefault(); if (unlinkVisualSelection(surface)) sync(); surface.focus() })
     const undo = toolbar.createEl('button', { text: 'Undo', attr: { type: 'button' } })
-    undo.addEventListener('mousedown', (event) => { event.preventDefault(); if (historyIndex > 0) { surface.innerHTML = history[--historyIndex]!; ensureTablePlaceholders(surface); sync(false) } surface.focus() })
+    undo.addEventListener('mousedown', (event) => { event.preventDefault(); if (historyIndex > 0) { restoreVisualSnapshot(surface, history[--historyIndex]!); ensureTablePlaceholders(surface); sync(false) } surface.focus() })
     const redo = toolbar.createEl('button', { text: 'Redo', attr: { type: 'button' } })
-    redo.addEventListener('mousedown', (event) => { event.preventDefault(); if (historyIndex + 1 < history.length) { surface.innerHTML = history[++historyIndex]!; ensureTablePlaceholders(surface); sync(false) } surface.focus() })
+    redo.addEventListener('mousedown', (event) => { event.preventDefault(); if (historyIndex + 1 < history.length) { restoreVisualSnapshot(surface, history[++historyIndex]!); ensureTablePlaceholders(surface); sync(false) } surface.focus() })
     const tableTools = toolbar.createDiv({ cls: 'carve-table-tools', attr: { role: 'group', 'aria-label': 'Table editing' } })
-    const tableHistory: string[] = []
     const tableAction = (label: string, action: (cell: HTMLTableCellElement) => HTMLTableCellElement | null): void => {
       const button = tableTools.createEl('button', { text: label, attr: { type: 'button', title: label } })
       button.addEventListener('mousedown', (event) => {
@@ -206,8 +238,9 @@ export class CarveView extends TextFileView {
         const cell = selectionCell(surface)
         if (!cell) return
         if (!isSimpleTable(cell.closest('table')!)) { status.setText('Merged cells are protected from structural table edits; use Source view.'); status.addClass('is-warning'); return }
-        tableHistory.push(surface.innerHTML)
-        focusCell(action(cell))
+        const target = action(cell)
+        if (!target) { status.setText('That table operation is unavailable at this boundary.'); status.addClass('is-warning'); return }
+        focusCell(target)
         sync()
         updateTableTools()
       })
@@ -227,12 +260,14 @@ export class CarveView extends TextFileView {
     tableAction('Align ←', (cell) => alignTableColumn(cell, 'left'))
     tableAction('Align ↔', (cell) => alignTableColumn(cell, 'center'))
     tableAction('Align →', (cell) => alignTableColumn(cell, 'right'))
-    tableAction('Header', (cell) => toggleTableHeader(cell))
+    tableAction('Cell header', (cell) => toggleTableHeader(cell))
+    tableAction('Row header', (cell) => toggleTableHeaderAxis(cell, 'row'))
+    tableAction('Column header', (cell) => toggleTableHeaderAxis(cell, 'column'))
     const caption = tableTools.createEl('button', { text: 'Caption', attr: { type: 'button' } })
     caption.addEventListener('mousedown', (event) => {
       event.preventDefault(); const cell = selectionCell(surface); const table = cell?.closest('table'); if (!table) return
       const text = window.prompt('Table caption (leave empty to remove)', table.caption?.textContent ?? ''); if (text === null) return
-      tableHistory.push(surface.innerHTML); setTableCaption(table, text); sync(); updateTableTools()
+      setTableCaption(table, text); sync(); updateTableTools()
     })
     const insertTable = toolbar.createEl('button', { text: 'Table', attr: { type: 'button', title: 'Insert 2 × 2 table' } })
     insertTable.addEventListener('mousedown', (event) => {
@@ -240,16 +275,18 @@ export class CarveView extends TextFileView {
       const range = savedRange()
       const size = parseTableSize(window.prompt('Table size (rows × columns)', '2 × 2'))
       if (!size) return
-      tableHistory.push(surface.innerHTML)
       const table = createTable(...size)
       const anchor = range?.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range?.commonAncestorContainer.parentElement
       const block = anchor?.closest('p,h1,h2,h3,h4,h5,h6,blockquote,ul,ol,pre,table')
       if (block && surface.contains(block)) block.after(table); else surface.append(table)
       focusCell(table.rows[0]?.cells[0]); sync(); updateTableTools()
     })
-    const undoTable = tableTools.createEl('button', { text: 'Undo table', attr: { type: 'button' } })
-    undoTable.addEventListener('mousedown', (event) => { event.preventDefault(); const html = tableHistory.pop(); if (html !== undefined) { surface.innerHTML = html; sync(); updateTableTools() } })
-    const updateTableTools = (): void => { tableTools.toggleClass('is-active', selectionCell(surface) !== null); undoTable.disabled = tableHistory.length === 0 }
+    const updateTableTools = (): void => {
+      tableTools.toggleClass('is-active', selectionCell(surface) !== null)
+      const anchor = document.getSelection()?.anchorNode
+      const element = anchor instanceof Element ? anchor : anchor?.parentElement
+      for (const [tag, button] of commandButtons) { const active = pendingFormats.has(tag) || Boolean(element?.closest(tag)); button.toggleClass('is-active', active); button.setAttribute('aria-pressed', String(active)) }
+    }
     const revert = toolbar.createEl('button', { text: 'Revert source', cls: 'carve-visual-revert', attr: { type: 'button', title: 'Discard this visual editing session' } })
     revert.addEventListener('click', () => { this.source = this.visualOriginal; this.requestSave(); void this.draw() })
     surface.addEventListener('input', () => {
@@ -257,7 +294,17 @@ export class CarveView extends TextFileView {
       applyVisualInputRule(surface)
       sync()
     })
+    surface.addEventListener('beforeinput', (event) => {
+      if (event.isComposing || event.inputType !== 'insertText' || !event.data || !pendingFormats.size) return
+      event.preventDefault(); if (insertFormattedText(surface, event.data, [...pendingFormats])) sync()
+    })
+    surface.addEventListener('compositionstart', () => status.setText('Composing text…'))
+    surface.addEventListener('compositionend', () => { sync(); status.setText('Saved as Carve source.') })
     surface.addEventListener('click', updateTableTools)
+    surface.addEventListener('change', (event) => {
+      const checkbox = event.target
+      if (checkbox instanceof HTMLInputElement && toggleVisualTask(surface, checkbox)) { sync(); status.setText(checkbox.checked ? 'Task completed.' : 'Task reopened.') }
+    })
     surface.addEventListener('keyup', updateTableTools)
     const editOpaque = (target: EventTarget | null): boolean => {
       const island = target instanceof Element ? target.closest<HTMLElement>('.carve-visual-opaque') : null
@@ -270,19 +317,43 @@ export class CarveView extends TextFileView {
       status.setText('Protected construct updated byte-for-byte.'); status.removeClass('is-warning'); sync(); island.focus()
       return true
     }
-    surface.addEventListener('dblclick', (event) => { if (editOpaque(event.target)) event.preventDefault() })
+    const openOpaqueEditor = (target: EventTarget | null): boolean => {
+      const island = target instanceof Element ? target.closest<HTMLElement>('.carve-visual-opaque') : null
+      const index = Number(island?.dataset.carveOpaque)
+      if (!island || !Number.isInteger(index) || !visual.opaque[index]) return false
+      new CarveConstructModal(this.app, visual.opaque[index]!, (next) => {
+        const updated = updateOpaqueConstruct(visual.opaque, index, next)
+        if (updated) { island.innerHTML = renderOpaqueConstruct(updated); void this.decorateVisualRich(island); sync(); status.setText('Construct updated from the live editor.') }
+      }).open()
+      return true
+    }
+    surface.addEventListener('dblclick', (event) => { if (openOpaqueEditor(event.target)) event.preventDefault() })
     surface.addEventListener('keydown', (event) => {
       if (event.ctrlKey || event.metaKey) {
         const key = event.key.toLowerCase()
-        if (key === 'z' && !event.shiftKey) { event.preventDefault(); if (historyIndex > 0) { surface.innerHTML = history[--historyIndex]!; ensureTablePlaceholders(surface); sync(false) }; return }
-        if (key === 'y' || (key === 'z' && event.shiftKey)) { event.preventDefault(); if (historyIndex + 1 < history.length) { surface.innerHTML = history[++historyIndex]!; ensureTablePlaceholders(surface); sync(false) }; return }
+        if (key === 'z' && !event.shiftKey) { event.preventDefault(); if (historyIndex > 0) { restoreVisualSnapshot(surface, history[--historyIndex]!); ensureTablePlaceholders(surface); sync(false) }; return }
+        if (key === 'y' || (key === 'z' && event.shiftKey)) { event.preventDefault(); if (historyIndex + 1 < history.length) { restoreVisualSnapshot(surface, history[++historyIndex]!); ensureTablePlaceholders(surface); sync(false) }; return }
         const tag = key === 'b' ? 'strong' : key === 'i' ? 'em' : null
-        if (tag) { event.preventDefault(); if (wrapVisualSelection(surface, tag)) sync(); return }
+        if (tag) { event.preventDefault(); if (inlineCommand(tag)) sync(); return }
       }
       if (event.key === 'Enter' && editOpaque(event.target)) { event.preventDefault(); return }
       if (event.key === 'Enter' && continueVisualList(surface)) { event.preventDefault(); sync(); return }
+      if (event.key === 'Backspace' && backspaceVisualListItem(surface)) { event.preventDefault(); sync(); return }
+      const keyboardCell = selectionCell(surface)
+      if (keyboardCell && (event.ctrlKey || event.metaKey) && /^Arrow(?:Up|Down|Left|Right)$/.test(event.key)) {
+        event.preventDefault()
+        const table = keyboardCell.closest('table')!; const row = keyboardCell.parentElement as HTMLTableRowElement
+        const rowOffset = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0
+        const columnOffset = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0
+        const target = table.rows[row.rowIndex + rowOffset]?.cells[keyboardCell.cellIndex + columnOffset]
+        if (target) focusCell(target); else status.setText('Reached the table boundary.')
+        updateTableTools(); return
+      }
       if (event.key !== 'Tab') return
       if (indentVisualListItem(surface, event.shiftKey)) { event.preventDefault(); sync(); return }
+      const selectionNode = document.getSelection()?.anchorNode
+      const selectionElement = selectionNode instanceof Element ? selectionNode : selectionNode?.parentElement
+      if (selectionElement?.closest('li') && surface.contains(selectionElement)) { event.preventDefault(); status.setText(event.shiftKey ? 'This item is already at the outermost list level.' : 'The first item cannot be nested without a preceding sibling.'); return }
       const cell = selectionCell(surface)
       if (!cell) return
       event.preventDefault()
@@ -290,7 +361,6 @@ export class CarveView extends TextFileView {
       const cells = Array.from(table.querySelectorAll<HTMLTableCellElement>('th,td'))
       const current = cells.indexOf(cell)
       if (!event.shiftKey && current === cells.length - 1 && isSimpleTable(table)) {
-        tableHistory.push(surface.innerHTML)
         const row = addTableRow(cell, 'after'); focusCell(row?.cells[0]); sync(); updateTableTools(); return
       }
       focusCell(cells[current + (event.shiftKey ? -1 : 1)] ?? cell)
@@ -298,7 +368,9 @@ export class CarveView extends TextFileView {
     })
     surface.addEventListener('paste', (event) => {
       const plain = event.clipboardData?.getData('text/plain')
-      if (plain && !event.clipboardData?.getData('text/html')) { event.preventDefault(); if (insertPlainText(surface, plain)) sync() }
+      const html = event.clipboardData?.getData('text/html')
+      if (html) { event.preventDefault(); if (insertSanitizedHtml(surface, html)) sync(); return }
+      if (plain) { event.preventDefault(); if (insertPlainText(surface, plain)) sync() }
     })
     if (visual.semanticLoss) {
       status.addClass('is-warning')

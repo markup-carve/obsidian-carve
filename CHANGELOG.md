@@ -1,5 +1,7 @@
 # Changelog
 
+- Harden Visual mode as a real structured editor: lossless sibling-preserving list conversion, caret-aware list splitting/joining/outdenting, clickable tasks, selection-restoring undo/redo, collapsed-caret formatting, active toolbar state, sanitized rich paste, and IME-aware input.
+- Unify table changes with document history, add explicit boundary feedback and Ctrl/Cmd+Arrow cell navigation, and replace double-click prompt chains for advanced constructs with a multiline editor and live preview.
 - Make Tab/Shift+Tab and Enter list-aware in Visual, Source, and Live split modes, including nesting, outdenting, numbered continuation, task continuation, multi-row indentation, and empty-item exit.
 - Make Visual mode the rich editing surface: Markdown-style block input rules, explicit Range/DOM formatting, editor-owned undo/redo, rendered protected constructs, and in-place Obsidian math/Mermaid rendering.
 - Simplify Live split to conventional highlighted source beside its rendered preview; semantic in-place decoration remains exclusive to standalone Source mode.
