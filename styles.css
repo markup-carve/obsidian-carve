@@ -169,3 +169,7 @@
   vertical-align: baseline;
   cursor: default;
 }
+.carve-visual-opaque.is-block { display: block; margin: .65rem 0; white-space: normal; overflow: visible; }
+.carve-visual-opaque.is-block > :first-child { margin-top: 0; }
+.carve-visual-opaque.is-block > :last-child { margin-bottom: 0; }
+.carve-visual-opaque.is-inline { display: inline; white-space: normal; }

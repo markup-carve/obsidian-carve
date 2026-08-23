@@ -1,15 +1,16 @@
 import { basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { FuzzySuggestModal, Plugin, TFile, TextFileView, WorkspaceLeaf, normalizePath, type FuzzyMatch } from 'obsidian'
+import { FuzzySuggestModal, Plugin, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type FuzzyMatch } from 'obsidian'
 import { CarveIndex } from './indexer'
 import { extractMetadata, withCrvExtension, type CarveMetadata } from './metadata'
 import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
-import { sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from './wysiwyg'
+import { editOpaqueWithPrompts, renderOpaqueConstruct, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from './wysiwyg'
 import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, toggleTableHeader } from './visual-table'
+import { applyVisualInputRule, clearVisualFormatting, formatVisualBlock, insertPlainText, insertVisualRule, toggleVisualList, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
 export type CarveViewMode = 'preview' | 'source' | 'split' | 'visual'
@@ -68,11 +69,11 @@ export class CarveView extends TextFileView {
       parent: host,
       state: EditorState.create({
         doc: this.source,
-        extensions: [basicSetup, carveLanguage, carveHighlighting, createCarveLivePreview((destination) => {
+        extensions: [basicSetup, carveLanguage, carveHighlighting, ...(livePreview ? [] : [createCarveLivePreview((destination) => {
           if (/^https?:\/\//i.test(destination)) return destination
           const target = this.plugin.app.metadataCache.getFirstLinkpathDest(destination, this.file?.path ?? '')
           return target ? this.plugin.app.vault.getResourcePath(target) : null
-        }), carveEditorCommands, EditorView.lineWrapping,
+        })]), carveEditorCommands, EditorView.lineWrapping,
           EditorView.contentAttributes.of({ 'aria-label': 'Carve source' }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return
@@ -146,15 +147,19 @@ export class CarveView extends TextFileView {
     const toolbar = shell.createDiv({ cls: 'carve-visual-toolbar', attr: { role: 'toolbar', 'aria-label': 'Visual formatting' } })
     const surface = shell.createEl('article', { cls: ['carve-visual-editor', 'markdown-rendered'], attr: { contenteditable: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Carve visual editor', spellcheck: 'true' } })
     surface.innerHTML = visual.html
+    void this.decorateVisualRich(surface)
     ensureTablePlaceholders(surface)
     const status = shell.createDiv({ cls: 'carve-visual-status' })
+    const history = [surface.innerHTML]
+    let historyIndex = 0
     if (visual.semanticLoss) {
       surface.contentEditable = 'false'
       shell.addClass('is-visual-locked')
       const unlock = toolbar.createEl('button', { text: 'Enable lossy editing', cls: 'carve-visual-unlock', attr: { type: 'button' } })
       unlock.addEventListener('click', () => { surface.contentEditable = 'true'; shell.removeClass('is-visual-locked'); unlock.remove(); status.setText('Lossy editing enabled for this session. Revert source remains available.'); surface.focus() })
     }
-    const sync = (): void => {
+    const sync = (recordHistory = true): void => {
+      if (recordHistory && history[historyIndex] !== surface.innerHTML) { history.splice(historyIndex + 1); history.push(surface.innerHTML); historyIndex = history.length - 1 }
       const result = visualHtmlToSource(surface.innerHTML, visual.frontmatter, visual.opaque)
       this.source = result.source
       status.setText(result.diagnostics.length ? `Imported with ${result.diagnostics.length} conversion warning(s).` : 'Saved as Carve source.')
@@ -170,35 +175,28 @@ export class CarveView extends TextFileView {
       if (!range) return
       const selection = document.getSelection(); selection?.removeAllRanges(); selection?.addRange(range)
     }
-    const wrapSelection = (tag: 'code' | 'mark'): void => {
-      const range = savedRange()
-      if (!range || range.collapsed) { status.setText(`Select text before applying ${tag === 'code' ? 'inline code' : 'highlight'}.`); return }
-      const wrapper = document.createElement(tag)
-      try { range.surroundContents(wrapper) } catch { wrapper.append(range.extractContents()); range.insertNode(wrapper) }
-      const selection = document.getSelection(); selection?.removeAllRanges(); range.selectNodeContents(wrapper); selection?.addRange(range); sync()
-    }
-    const commands: Array<[string, string, string, string?]> = [
-      ['B', 'Bold', 'bold'], ['I', 'Italic', 'italic'], ['U', 'Underline', 'underline'], ['S', 'Strikethrough', 'strikeThrough'],
-      ['P', 'Paragraph', 'formatBlock', 'p'], ['H1', 'Heading 1', 'formatBlock', 'h1'], ['H2', 'Heading 2', 'formatBlock', 'h2'], ['H3', 'Heading 3', 'formatBlock', 'h3'], ['H4', 'Heading 4', 'formatBlock', 'h4'], ['H5', 'Heading 5', 'formatBlock', 'h5'], ['H6', 'Heading 6', 'formatBlock', 'h6'], ['<>', 'Code block', 'formatBlock', 'pre'],
-      ['x²', 'Superscript', 'superscript'], ['x₂', 'Subscript', 'subscript'], ['•', 'Bulleted list', 'insertUnorderedList'], ['1.', 'Numbered list', 'insertOrderedList'], ['❯', 'Block quote', 'formatBlock', 'blockquote'],
-      ['―', 'Horizontal rule', 'insertHorizontalRule'], ['Tx', 'Remove formatting', 'removeFormat'],
+    const commands: Array<[string, string, () => boolean]> = [
+      ['B', 'Bold', () => wrapVisualSelection(surface, 'strong')], ['I', 'Italic', () => wrapVisualSelection(surface, 'em')], ['U', 'Underline', () => wrapVisualSelection(surface, 'u')], ['S', 'Strikethrough', () => wrapVisualSelection(surface, 's')],
+      ['P', 'Paragraph', () => formatVisualBlock(surface, 'p')], ['H1', 'Heading 1', () => formatVisualBlock(surface, 'h1')], ['H2', 'Heading 2', () => formatVisualBlock(surface, 'h2')], ['H3', 'Heading 3', () => formatVisualBlock(surface, 'h3')], ['H4', 'Heading 4', () => formatVisualBlock(surface, 'h4')], ['H5', 'Heading 5', () => formatVisualBlock(surface, 'h5')], ['H6', 'Heading 6', () => formatVisualBlock(surface, 'h6')], ['<>', 'Code block', () => formatVisualBlock(surface, 'pre')],
+      ['x²', 'Superscript', () => wrapVisualSelection(surface, 'sup')], ['x₂', 'Subscript', () => wrapVisualSelection(surface, 'sub')], ['•', 'Bulleted list', () => toggleVisualList(surface, false)], ['1.', 'Numbered list', () => toggleVisualList(surface, true)], ['❯', 'Block quote', () => formatVisualBlock(surface, 'blockquote')],
+      ['―', 'Horizontal rule', () => insertVisualRule(surface)], ['Tx', 'Remove formatting', () => clearVisualFormatting(surface)],
     ]
-    for (const [caption, label, command, value] of commands) {
+    for (const [caption, label, command] of commands) {
       const button = toolbar.createEl('button', { text: caption, attr: { type: 'button', 'aria-label': label, title: label } })
-      button.addEventListener('mousedown', (event) => { event.preventDefault(); document.execCommand(command, false, value); surface.focus(); sync() })
+      button.addEventListener('mousedown', (event) => { event.preventDefault(); if (command()) sync(); else status.setText('Select compatible content first.'); surface.focus() })
     }
     for (const [caption, label, tag] of [['`c`', 'Inline code', 'code'], ['=', 'Highlight', 'mark']] as const) {
       const button = toolbar.createEl('button', { text: caption, attr: { type: 'button', title: label, 'aria-label': label } })
-      button.addEventListener('mousedown', (event) => { event.preventDefault(); wrapSelection(tag); surface.focus() })
+      button.addEventListener('mousedown', (event) => { event.preventDefault(); if (wrapVisualSelection(surface, tag)) sync(); else status.setText('Select text first.'); surface.focus() })
     }
     const link = toolbar.createEl('button', { text: 'Link', attr: { type: 'button', title: 'Create link' } })
-    link.addEventListener('mousedown', (event) => { event.preventDefault(); const range = savedRange(); const url = window.prompt('Link URL'); restoreRange(range); if (url) document.execCommand('createLink', false, url); surface.focus(); sync() })
+    link.addEventListener('mousedown', (event) => { event.preventDefault(); const range = savedRange(); const url = window.prompt('Link URL'); restoreRange(range); if (url && wrapVisualSelection(surface, 'a', { href: url })) sync(); surface.focus() })
     const unlink = toolbar.createEl('button', { text: 'Unlink', attr: { type: 'button', title: 'Remove link' } })
-    unlink.addEventListener('mousedown', (event) => { event.preventDefault(); document.execCommand('unlink'); surface.focus(); sync() })
+    unlink.addEventListener('mousedown', (event) => { event.preventDefault(); if (unlinkVisualSelection(surface)) sync(); surface.focus() })
     const undo = toolbar.createEl('button', { text: 'Undo', attr: { type: 'button' } })
-    undo.addEventListener('mousedown', (event) => { event.preventDefault(); document.execCommand('undo'); surface.focus(); sync() })
+    undo.addEventListener('mousedown', (event) => { event.preventDefault(); if (historyIndex > 0) { surface.innerHTML = history[--historyIndex]!; ensureTablePlaceholders(surface); sync(false) } surface.focus() })
     const redo = toolbar.createEl('button', { text: 'Redo', attr: { type: 'button' } })
-    redo.addEventListener('mousedown', (event) => { event.preventDefault(); document.execCommand('redo'); surface.focus(); sync() })
+    redo.addEventListener('mousedown', (event) => { event.preventDefault(); if (historyIndex + 1 < history.length) { surface.innerHTML = history[++historyIndex]!; ensureTablePlaceholders(surface); sync(false) } surface.focus() })
     const tableTools = toolbar.createDiv({ cls: 'carve-table-tools', attr: { role: 'group', 'aria-label': 'Table editing' } })
     const tableHistory: string[] = []
     const tableAction = (label: string, action: (cell: HTMLTableCellElement) => HTMLTableCellElement | null): void => {
@@ -256,6 +254,7 @@ export class CarveView extends TextFileView {
     revert.addEventListener('click', () => { this.source = this.visualOriginal; this.requestSave(); void this.draw() })
     surface.addEventListener('input', () => {
       for (const placeholder of Array.from(surface.querySelectorAll('br[data-carve-placeholder]'))) if (placeholder.parentElement?.textContent) placeholder.remove()
+      applyVisualInputRule(surface)
       sync()
     })
     surface.addEventListener('click', updateTableTools)
@@ -264,15 +263,22 @@ export class CarveView extends TextFileView {
       const island = target instanceof Element ? target.closest<HTMLElement>('.carve-visual-opaque') : null
       const index = Number(island?.dataset.carveOpaque)
       if (!island || !Number.isInteger(index) || !visual.opaque[index]) return false
-      const next = window.prompt('Edit exact Carve source for this protected construct', visual.opaque[index]!.source)
+      const next = editOpaqueWithPrompts(visual.opaque[index]!, (label, value) => window.prompt(label, value))
       if (next === null) return true
       const updated = updateOpaqueConstruct(visual.opaque, index, next)
-      if (updated) island.setText(updated.label)
+      if (updated) { island.innerHTML = renderOpaqueConstruct(updated); void this.decorateVisualRich(island) }
       status.setText('Protected construct updated byte-for-byte.'); status.removeClass('is-warning'); sync(); island.focus()
       return true
     }
     surface.addEventListener('dblclick', (event) => { if (editOpaque(event.target)) event.preventDefault() })
     surface.addEventListener('keydown', (event) => {
+      if (event.ctrlKey || event.metaKey) {
+        const key = event.key.toLowerCase()
+        if (key === 'z' && !event.shiftKey) { event.preventDefault(); if (historyIndex > 0) { surface.innerHTML = history[--historyIndex]!; ensureTablePlaceholders(surface); sync(false) }; return }
+        if (key === 'y' || (key === 'z' && event.shiftKey)) { event.preventDefault(); if (historyIndex + 1 < history.length) { surface.innerHTML = history[++historyIndex]!; ensureTablePlaceholders(surface); sync(false) }; return }
+        const tag = key === 'b' ? 'strong' : key === 'i' ? 'em' : null
+        if (tag) { event.preventDefault(); if (wrapVisualSelection(surface, tag)) sync(); return }
+      }
       if (event.key === 'Enter' && editOpaque(event.target)) { event.preventDefault(); return }
       if (event.key !== 'Tab') return
       const cell = selectionCell(surface)
@@ -290,7 +296,7 @@ export class CarveView extends TextFileView {
     })
     surface.addEventListener('paste', (event) => {
       const plain = event.clipboardData?.getData('text/plain')
-      if (plain && !event.clipboardData?.getData('text/html')) { event.preventDefault(); document.execCommand('insertText', false, plain) }
+      if (plain && !event.clipboardData?.getData('text/html')) { event.preventDefault(); if (insertPlainText(surface, plain)) sync() }
     })
     if (visual.semanticLoss) {
       status.addClass('is-warning')
@@ -301,6 +307,26 @@ export class CarveView extends TextFileView {
     } else status.setText('Experimental visual mode. Frontmatter is preserved verbatim.')
     updateTableTools()
     surface.focus()
+  }
+
+  private async decorateVisualRich(root: HTMLElement): Promise<void> {
+    let renderedMath = false
+    for (const math of Array.from(root.querySelectorAll<HTMLElement>('carve-opaque .math'))) {
+      const display = math.classList.contains('display')
+      const authored = math.textContent ?? ''
+      const tex = authored.replace(display ? /^\\\[|\\\]$/g : /^\\\(|\\\)$/g, '')
+      math.replaceWith(renderMath(tex, display)); renderedMath = true
+    }
+    if (renderedMath) await finishRenderMath()
+    const diagrams = Array.from(root.querySelectorAll<HTMLElement>('carve-opaque pre code.language-mermaid'))
+    if (!diagrams.length) return
+    const mermaid = await loadMermaid()
+    for (const [index, code] of diagrams.entries()) {
+      try {
+        const rendered = await mermaid.render(`carve-mermaid-${Date.now()}-${index}`, code.textContent ?? '')
+        const host = document.createElement('div'); host.className = 'carve-visual-mermaid'; host.innerHTML = rendered.svg; code.parentElement?.replaceWith(host)
+      } catch (error) { code.parentElement?.addClass('carve-visual-render-error'); code.parentElement?.setAttribute('title', String(error)) }
+    }
   }
 
   private async renderPreview(preview: HTMLElement): Promise<void> {
