@@ -9,6 +9,12 @@ export type LivePresentation =
   | { kind: 'mark'; from: number; to: number; className: string }
   | { kind: 'widget'; at: number; label: string; className: string }
 
+export const LIVE_PREVIEW_IDLE_MS = 120
+export const LIVE_PREVIEW_MAX_SOURCE_LENGTH = 250_000
+export function livePreviewDelay(sourceLength: number): number | null {
+  return sourceLength <= LIVE_PREVIEW_MAX_SOURCE_LENGTH ? LIVE_PREVIEW_IDLE_MS : null
+}
+
 function active(range: { start: number; end: number }, selections: readonly Pick<SelectionRange, 'from' | 'to'>[]): boolean {
   return selections.some((selection) => selection.from === selection.to
     ? selection.from >= range.start && selection.from < range.end
@@ -144,21 +150,44 @@ function decorations(session: EditorSession, selections: readonly SelectionRange
 }
 
 class LivePreviewState {
-  decorations: DecorationSet
-  private session: EditorSession
+  decorations: DecorationSet = Decoration.none
+  private session: EditorSession | null = null
+  private source: string
+  private timer: ReturnType<typeof setTimeout> | null = null
 
   constructor(view: EditorView) {
-    this.session = createEditorSession(view.state.doc.toString())
-    this.decorations = decorations(this.session, view.state.selection.ranges)
+    this.source = view.state.doc.toString()
+    this.schedule(view)
   }
 
   update(update: ViewUpdate): void {
     if (update.docChanged) {
-      const changes: Array<{ from: number; to: number; insert: string }> = []
-      update.changes.iterChanges((from, to, _fromB, _toB, inserted) => changes.push({ from, to, insert: inserted.toString() }))
-      this.session.update(changes)
+      this.source = update.state.doc.toString()
+      this.decorations = this.decorations.map(update.changes)
+      this.schedule(update.view)
     }
-    if (update.docChanged || update.selectionSet) this.decorations = decorations(this.session, update.state.selection.ranges)
+    if (update.selectionSet && this.session?.snapshot().source === this.source) this.decorations = decorations(this.session, update.state.selection.ranges)
+  }
+
+  destroy(): void { if (this.timer !== null) clearTimeout(this.timer) }
+
+  private schedule(view: EditorView): void {
+    if (this.timer !== null) clearTimeout(this.timer)
+    const delay = livePreviewDelay(this.source.length)
+    if (delay === null) {
+      this.session = null
+      this.decorations = Decoration.none
+      return
+    }
+    const expected = this.source
+    this.timer = setTimeout(() => {
+      this.timer = null
+      if (view.state.doc.toString() !== expected) return
+      this.session = createEditorSession(expected)
+      this.decorations = decorations(this.session, view.state.selection.ranges)
+      // A no-op transaction asks CodeMirror to sample the updated provider.
+      view.dispatch({})
+    }, delay)
   }
 }
 

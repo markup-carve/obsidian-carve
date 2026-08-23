@@ -1,6 +1,7 @@
 # Changelog
 
 - Extend source Live Preview to list/task markers, links, simple table cells, fenced code blocks, and attached attribute badges.
+- Keep typing responsive by mapping existing decorations through transactions and rebuilding semantic presentation after 120 ms idle; documents above 250,000 UTF-16 units retain normal source highlighting without a blocking full parse.
 
 - Add source-authoritative Live Preview for headings and inline emphasis, backed by carve-js editor snapshots. Syntax markers hide away from the cursor and reveal for editing.
 

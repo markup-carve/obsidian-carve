@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { livePresentations } from '../dist-test/live-preview.js'
+import { LIVE_PREVIEW_IDLE_MS, livePresentations, livePreviewDelay } from '../dist-test/live-preview.js'
 
 test('typed ### heading becomes an H3 presentation outside the cursor', () => {
   assert.deepEqual(livePresentations('### Human heading', [{ from: 17, to: 17 }]), [
@@ -76,4 +76,10 @@ test('attached attributes become a readable badge and reveal at the cursor', () 
     { kind: 'hide', from: 0, to: 13 },
   ])
   assert.equal(livePresentations(source, [{ from: 5, to: 5 }]).some((item) => item.kind === 'hide' && item.from === 0 && item.to === 13), false)
+})
+
+test('semantic reparsing is debounced and bounded for responsive typing', () => {
+  assert.equal(livePreviewDelay(100_000), LIVE_PREVIEW_IDLE_MS)
+  assert.equal(livePreviewDelay(250_000), LIVE_PREVIEW_IDLE_MS)
+  assert.equal(livePreviewDelay(250_001), null)
 })
