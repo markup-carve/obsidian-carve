@@ -33,11 +33,16 @@
 .carve-table-tools { display: none; order: 2; flex: 1 0 100%; align-items: center; gap: .15rem; padding-top: .35rem; border-top: 1px solid var(--background-modifier-border); }
 .carve-table-tools.is-active { display: flex; flex-wrap: wrap; }
 .carve-table-tools button { white-space: nowrap; }
+.carve-table-quick-tools { display: none; position: fixed; z-index: var(--layer-popover, 30); gap: .2rem; padding: .25rem; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); background: var(--background-primary-alt); box-shadow: var(--shadow-s); }
+.carve-table-quick-tools.is-active { display: flex; }
+.carve-table-quick-tools button { min-width: 2rem; min-height: 2rem; padding: .25rem; border: 0; border-radius: var(--radius-s); color: var(--text-muted); background: transparent; }
+.carve-table-quick-tools button:hover, .carve-table-quick-tools button:focus-visible { color: var(--text-normal); background: var(--background-modifier-hover); }
 .carve-visual-editor { overflow: auto; padding: var(--file-margins); outline: none; caret-color: var(--text-accent); }
 .carve-visual-editor:focus { box-shadow: inset 0 0 0 1px var(--background-modifier-border-focus); }
 .carve-visual-editor > :first-child { margin-top: 0; }
 .carve-visual-editor td, .carve-visual-editor th { min-width: 3.5rem; height: 2.25rem; padding: .4rem .65rem; }
 .carve-visual-editor input[type="checkbox"] { cursor: pointer; }
+.carve-visual-editor td.is-carve-selected, .carve-visual-editor th.is-carve-selected { box-shadow: inset 0 0 0 2px var(--interactive-accent); background: var(--background-modifier-hover); }
 .carve-visual-editor td:empty, .carve-visual-editor th:empty { min-height: 2.25rem; }
 .carve-visual-status { padding: .35rem var(--file-margins); border-top: 1px solid var(--background-modifier-border); color: var(--text-muted); background: var(--background-secondary); font-size: var(--font-ui-smaller); }
 .carve-visual-status.is-warning { color: var(--text-warning); }

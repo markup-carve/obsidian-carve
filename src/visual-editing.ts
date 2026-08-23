@@ -54,6 +54,14 @@ export function applyVisualInputRule(surface: HTMLElement, selection: Selection 
     const quote = document.createElement('blockquote'); quote.append(document.createElement('br'))
     block.replaceWith(quote); placeCaretAtStart(quote); return true
   }
+  if (text === '--- ') {
+    const rule = document.createElement('hr'); const paragraph = document.createElement('p'); paragraph.append(document.createElement('br'))
+    block.replaceWith(rule, paragraph); placeCaretAtStart(paragraph); return true
+  }
+  if (text === '``` ') {
+    const code = document.createElement('pre'); code.append(document.createElement('br'))
+    block.replaceWith(code); placeCaretAtStart(code); return true
+  }
   return false
 }
 
@@ -214,6 +222,20 @@ export function toggleVisualTask(surface: HTMLElement, checkbox: HTMLInputElemen
   if (checkbox.type !== 'checkbox' || !surface.contains(checkbox) || !checkbox.closest('li')) return false
   checkbox.toggleAttribute('checked', checkbox.checked)
   return true
+}
+
+export function toggleVisualTaskAtSelection(surface: HTMLElement, selection: Selection | null = document.getSelection()): boolean {
+  const item = activeListItem(surface, selection)
+  if (item) {
+    const existing = Array.from(item.children).find((child) => child instanceof HTMLInputElement && child.type === 'checkbox') as HTMLInputElement | undefined
+    if (existing) { existing.checked = !existing.checked; existing.toggleAttribute('checked', existing.checked); return true }
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.setAttribute('aria-label', 'Toggle task'); item.prepend(checkbox, ' '); return true
+  }
+  const block = activeBlock(surface, selection); if (!block || block.tagName === 'LI') return false
+  const list = document.createElement('ul'); const created = document.createElement('li'); const checkbox = document.createElement('input')
+  checkbox.type = 'checkbox'; checkbox.setAttribute('aria-label', 'Toggle task'); created.append(checkbox, ' ')
+  while (block.firstChild) created.append(block.firstChild)
+  list.append(created); block.replaceWith(list); placeCaretAtEnd(created); return true
 }
 
 /** Backspace at an item boundary mirrors mature outline editors. */

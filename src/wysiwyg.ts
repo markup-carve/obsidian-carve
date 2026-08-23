@@ -16,7 +16,7 @@ export interface OpaqueConstruct { token: string; source: string; label: string;
 
 const OPAQUE_TYPES = new Set(['admonition', 'div', 'line_block', 'footnote', 'footnote_ref', 'inline_footnote', 'abbreviation_def', 'abbreviation', 'comment', 'insert', 'delete', 'substitution', 'critic_comment', 'raw_inline', 'tag', 'mention', 'math'])
 const OPAQUE_BLOCKS = new Set(['admonition', 'div', 'line_block', 'footnote', 'abbreviation_def'])
-function opaqueBlock(item: Pick<OpaqueConstruct, 'kind' | 'source'>): boolean { return OPAQUE_BLOCKS.has(item.kind) || item.kind === 'mermaid' || (item.kind === 'math' && item.source.includes('\n')) }
+export function opaqueBlock(item: Pick<OpaqueConstruct, 'kind' | 'source'>): boolean { return OPAQUE_BLOCKS.has(item.kind) || item.kind === 'mermaid' || (item.kind === 'math' && item.source.includes('\n')) }
 
 function escapeHtml(value: string): string { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') }
 function opaqueLabel(kind: string, authored: string): string {
@@ -30,6 +30,13 @@ export function updateOpaqueConstruct(opaque: readonly OpaqueConstruct[], index:
   item.source = source
   item.label = opaqueLabel(item.kind, source)
   return item
+}
+
+export function appendOpaqueConstruct(opaque: readonly OpaqueConstruct[], kind: string, source: string): { item: OpaqueConstruct; index: number } {
+  const items = opaque as OpaqueConstruct[]; let token = `CARVEOPAQUE${items.length}X9F3A`
+  while (items.some((item) => item.token === token || item.source.includes(token)) || source.includes(token)) token += 'X'
+  const item = { token, source, kind, label: opaqueLabel(kind, source) }; items.push(item)
+  return { item, index: items.length - 1 }
 }
 
 export type OpaquePrompt = (label: string, value: string) => string | null
@@ -188,6 +195,10 @@ export function visualHtmlToSource(html: string, frontmatter = '', opaque: reado
 /** Browser empty blocks represent spacing, not authored hard breaks. */
 export function normalizeVisualHtml(html: string, opaque: readonly OpaqueConstruct[] = []): string {
   html = html.replace(/<carve-opaque\b[^>]*data-carve-opaque="(\d+)"[^>]*>[\s\S]*?<\/carve-opaque>/gi, (_whole, rawIndex: string) => opaque[Number(rawIndex)]?.token ?? '')
+  html = html.replace(/\sclass="([^"]*)"/gi, (whole, classes: string) => {
+    const retained = classes.split(/\s+/).filter((name) => name && name !== 'is-carve-selected')
+    return retained.length ? ` class="${retained.join(' ')}"` : ''
+  })
   return html
     .replace(/<section(?:\s[^>]*)?>/gi, '')
     .replace(/<\/section\s*>/gi, '')

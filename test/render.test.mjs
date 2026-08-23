@@ -3,7 +3,7 @@ import test from 'node:test'
 import { carveToHtml } from '@markup-carve/carve'
 import { extractMetadata, withCrvExtension } from '../dist-test/metadata.js'
 import { renderCarve, rewriteWikiSyntax } from '../dist-test/render.js'
-import { editOpaqueWithPrompts, normalizeVisualHtml, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from '../dist-test/wysiwyg.js'
+import { appendOpaqueConstruct, editOpaqueWithPrompts, normalizeVisualHtml, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from '../dist-test/wysiwyg.js'
 
 test('the renderer produces Obsidian-ready HTML', () => {
   const html = carveToHtml('# Human markup\n\nA *strong* idea and [link](https://example.com).', { allowRawHtml: false })
@@ -60,6 +60,12 @@ test('visual table caret placeholders never enter Carve source', () => {
   assert.equal(edited.source, '|= A |\n| |\n')
 })
 
+test('visual table selection state never enters Carve source', () => {
+  const edited = visualHtmlToSource('<table><tr><td class="human is-carve-selected">A</td><td class="is-carve-selected">B</td></tr></table>')
+  assert.doesNotMatch(edited.source, /is-carve-selected/)
+  assert.match(edited.source, /human/)
+})
+
 test('visual table alignment survives import as Carve cell semantics', () => {
   const result = visualHtmlToSource('<table><tbody><tr><td align="center">A</td><td>B</td></tr><tr><td align="center">C</td><td>D</td></tr></tbody></table>')
   assert.equal(result.source, '|{align=center} A | B |\n|{align=center} C | D |\n')
@@ -113,6 +119,14 @@ test('protected constructs can be explicitly edited without exposing their place
   const updated = updateOpaqueConstruct(visual.opaque, 0, '{% new exact comment %}')
   assert.match(updated.label, /new exact comment/)
   assert.equal(visualHtmlToSource(visual.html, visual.frontmatter, visual.opaque).source, 'before {% new exact comment %} after\n')
+})
+
+test('new advanced constructs can be inserted into a visual document losslessly', () => {
+  const visual = sourceToVisualDocument('Before\n')
+  const created = appendOpaqueConstruct(visual.opaque, 'math', '$`x + y`')
+  assert.equal(created.index, 0)
+  const html = `${visual.html}<carve-opaque data-carve-opaque="0"></carve-opaque>`
+  assert.equal(visualHtmlToSource(html, visual.frontmatter, visual.opaque).source, 'Before\n\n$`x + y`\n')
 })
 
 test('renderer-owned heading sections do not create visual import warnings', () => {

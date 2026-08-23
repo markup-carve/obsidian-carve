@@ -11,7 +11,7 @@ Object.assign(globalThis, {
   HTMLTableElement: window.HTMLTableElement,
 })
 
-const { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, setTableCaption, sortTableColumn, toggleTableHeader, toggleTableHeaderAxis } = await import('../dist-test/visual-table.js')
+const { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, setTableCaption, sortTableColumn, tableCellRectangle, toggleTableHeader, toggleTableHeaderAxis } = await import('../dist-test/visual-table.js')
 
 test('parses and bounds requested table dimensions', () => {
   assert.deepEqual(parseTableSize('3 × 4'), [3, 4])
@@ -52,6 +52,13 @@ test('inserts and deletes columns across both table axes', () => {
   assert.deepEqual(Array.from(table.rows, (row) => row.cells.length), [3, 3, 3])
   assert.equal(deleteTableColumn(table.rows[1].cells[1]), true)
   assert.deepEqual(Array.from(table.rows, (row) => row.cells.length), [2, 2, 2])
+})
+
+test('selects a rectangular range of simple table cells', () => {
+  const table = createTable(3, 3)
+  assert.equal(tableCellRectangle(table.rows[0].cells[1], table.rows[2].cells[2]).length, 6)
+  const other = createTable(1, 1)
+  assert.deepEqual(tableCellRectangle(table.rows[0].cells[0], other.rows[0].cells[0]), [])
 })
 
 test('moves rows and columns in both directions without rewriting cells', () => {

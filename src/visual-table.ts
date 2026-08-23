@@ -30,6 +30,19 @@ export function selectionCell(surface: HTMLElement, selection: Selection | null 
   return cell && surface.contains(cell) ? cell : null
 }
 
+export function tableCellRectangle(anchor: HTMLTableCellElement, focus: HTMLTableCellElement): HTMLTableCellElement[] {
+  const table = anchor.closest('table'); const focusTable = focus.closest('table')
+  if (!table || table !== focusTable || !isSimpleTable(table)) return []
+  const anchorRow = (anchor.parentElement as HTMLTableRowElement).rowIndex; const focusRow = (focus.parentElement as HTMLTableRowElement).rowIndex
+  const fromRow = Math.min(anchorRow, focusRow); const toRow = Math.max(anchorRow, focusRow)
+  const fromColumn = Math.min(anchor.cellIndex, focus.cellIndex); const toColumn = Math.max(anchor.cellIndex, focus.cellIndex)
+  const cells: HTMLTableCellElement[] = []
+  for (let row = fromRow; row <= toRow; row++) for (let column = fromColumn; column <= toColumn; column++) {
+    const cell = table.rows[row]?.cells[column]; if (cell) cells.push(cell)
+  }
+  return cells
+}
+
 export function isSimpleTable(table: HTMLTableElement): boolean {
   return !table.querySelector('td[rowspan],td[colspan],th[rowspan],th[colspan]')
 }

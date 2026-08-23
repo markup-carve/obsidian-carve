@@ -54,6 +54,21 @@ merged-cell tables rather than guessing at span geometry. Empty rows and cells
 retain a visible editing height and caret target before any content is entered;
 their editor-only placeholders never enter the `.crv` file.
 
+Visual mode is designed to require less syntax knowledge than a core Markdown
+editor. A task can be created or toggled with the **Task** button or
+Ctrl/Cmd+Enter; headings use Ctrl/Cmd+Alt+1–6; numbered and bulleted lists use
+Ctrl/Cmd+Shift+7/8; and typing `--- ` or `` ``` `` followed by a space creates
+the rendered horizontal rule or code block immediately. Math, Mermaid diagrams,
+callouts, and footnotes have direct insertion buttons and open as rendered,
+lossless constructs rather than exposed delimiter text.
+
+When a table cell is active, four compact insertion controls appear beside it
+for rows and columns in either direction. Shift-click selects a rectangular cell
+range, **Clear cells** applies to the complete selection, Ctrl/Cmd+Arrow moves
+between cells, Tab appends from the final cell, and structural actions remain in
+the same selection-restoring document history. These operations do not require
+editing pipe syntax or maintaining column delimiters manually.
+
 Visual formatting is implemented with Selection, Range, and explicit DOM
 transformations rather than deprecated `execCommand` behavior. The editor owns
 its undo/redo snapshots, including toolbar actions and Markdown-style input
