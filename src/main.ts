@@ -7,7 +7,7 @@ import { extractMetadata, withCrvExtension, type CarveMetadata } from './metadat
 import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { carveLivePreview } from './live-preview'
-import { carveEditorCommands, createLink, editTable, setHeading, toggleCode, toggleEmphasis, toggleStrike, toggleStrong } from './editor-commands'
+import { carveEditorCommands, createLink, editTable, insertHorizontalRule, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleStrike, toggleStrong, wrapCodeBlock } from './editor-commands'
 import { sourceToVisualDocument, visualHtmlToSource } from './wysiwyg'
 import { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, parseTableSize, selectionCell, setTableCaption, toggleTableHeader } from './visual-table'
 
@@ -95,6 +95,13 @@ export class CarveView extends TextFileView {
     action('↓ Row', 'Insert table row after', (view) => editTable(view, 'row-after'))
     action('← Col', 'Insert table column before', (view) => editTable(view, 'column-before'))
     action('→ Col', 'Insert table column after', (view) => editTable(view, 'column-after'))
+    action('− Row', 'Delete table row', (view) => editTable(view, 'delete-row'))
+    action('− Col', 'Delete table column', (view) => editTable(view, 'delete-column'))
+    action('•', 'Toggle bulleted list item', (view) => setLinePrefix(view, 'bullet'))
+    action('☐', 'Toggle task item', (view) => setLinePrefix(view, 'task'))
+    action('❯', 'Toggle block quote', (view) => setLinePrefix(view, 'quote'))
+    action('<>', 'Wrap selection in code fence', wrapCodeBlock)
+    action('―', 'Insert horizontal rule', insertHorizontalRule)
   }
 
   private async draw(): Promise<void> {

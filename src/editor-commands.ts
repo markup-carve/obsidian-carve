@@ -7,7 +7,7 @@ export interface FormatEdit {
   head: number
 }
 
-export type TableDirection = 'row-before' | 'row-after' | 'column-before' | 'column-after'
+export type TableDirection = 'row-before' | 'row-after' | 'column-before' | 'column-after' | 'delete-row' | 'delete-column'
 
 /** Smallest-range source edit for toggling an authored inline delimiter. */
 export function inlineFormatEdit(source: string, from: number, to: number, open: string, close = open): FormatEdit {
@@ -44,6 +44,16 @@ export function simpleTableEdit(source: string, at: number, direction: TableDire
   const line = source.slice(lineStart, lineEnd).replace(/\r$/, '')
   if (!/^\|[^\r\n]*\|$/.test(line) || /\\\|/.test(line)) return null
   const cells = line.slice(1, -1).split('|')
+  if (direction === 'delete-row') {
+    let from = lineStart
+    let to = lineEnd
+    if (to < source.length) to += 1
+    else if (from > 0) from -= 1
+    const remaining = source.slice(0, from) + source.slice(to)
+    const otherRows = remaining.split(/\r?\n/).filter((candidate) => /^\|[^\r\n]*\|$/.test(candidate))
+    if (otherRows.length === 0) return null
+    return { changes: [{ from, to, insert: '' }], anchor: from, head: from }
+  }
   if (direction.startsWith('row-')) {
     const row = `|${cells.map(() => '  ').join('|')}|`
     const before = direction === 'row-before'
@@ -73,12 +83,32 @@ export function simpleTableEdit(source: string, at: number, direction: TableDire
   const block = source.slice(blockStart, blockEnd)
   const lines = block.split('\n')
   if (lines.some((row) => row.slice(1, -1).split('|').length !== cells.length)) return null
+  if (direction === 'delete-column' && cells.length <= 1) return null
   const replacement = lines.map((row) => {
     const rowCells = row.replace(/\r$/, '').slice(1, -1).split('|')
-    rowCells.splice(cellIndex, 0, '  ')
+    if (direction === 'delete-column') rowCells.splice(Math.min(cellIndex, rowCells.length - 1), 1)
+    else rowCells.splice(cellIndex, 0, '  ')
     return `|${rowCells.join('|')}|${row.endsWith('\r') ? '\r' : ''}`
   }).join('\n')
   return { changes: [{ from: blockStart, to: blockEnd, insert: replacement }], anchor: at, head: at }
+}
+
+export type LinePrefix = 'bullet' | 'task' | 'quote'
+export function linePrefixEdit(source: string, lineFrom: number, lineTo: number, kind: LinePrefix): FormatEdit {
+  const line = source.slice(lineFrom, lineTo)
+  const prefixes: Record<LinePrefix, RegExp> = { bullet: /^[-+*][ \t]+/, task: /^[-+*][ \t]+\[[ xX-]\][ \t]+/, quote: /^>[ \t]+/ }
+  const insertions: Record<LinePrefix, string> = { bullet: '- ', task: '- [ ] ', quote: '> ' }
+  const own = prefixes[kind].exec(line)?.[0] ?? ''
+  const any = /^(?:[-+*][ \t]+(?:\[[ xX-]\][ \t]+)?|>[ \t]+)/.exec(line)?.[0] ?? ''
+  const insert = own ? '' : insertions[kind]
+  return { changes: [{ from: lineFrom, to: lineFrom + (own ? own.length : any.length), insert }], anchor: lineFrom + insert.length, head: lineFrom + insert.length }
+}
+
+export function fencedBlockEdit(source: string, from: number, to: number, language = ''): FormatEdit {
+  const selected = source.slice(from, to)
+  const open = `\`\`\`${language}\n`
+  const close = `${selected.endsWith('\n') ? '' : '\n'}\`\`\``
+  return { changes: [{ from, to: from, insert: open }, { from: to, to, insert: close }], anchor: from + open.length, head: to + open.length }
 }
 
 function applyInline(open: string, close = open): Command {
@@ -113,6 +143,26 @@ export function editTable(view: EditorView, direction: TableDirection): boolean 
   const edit = simpleTableEdit(view.state.doc.toString(), view.state.selection.main.head, direction)
   if (!edit) return false
   view.dispatch({ changes: edit.changes, scrollIntoView: true })
+  return true
+}
+
+export function setLinePrefix(view: EditorView, kind: LinePrefix): boolean {
+  const line = view.state.doc.lineAt(view.state.selection.main.head)
+  const edit = linePrefixEdit(view.state.doc.toString(), line.from, line.to, kind)
+  view.dispatch({ changes: edit.changes, scrollIntoView: true })
+  return true
+}
+
+export const wrapCodeBlock: Command = (view): boolean => {
+  const selection = view.state.selection.main
+  const edit = fencedBlockEdit(view.state.doc.toString(), selection.from, selection.to)
+  view.dispatch({ changes: edit.changes, selection: EditorSelection.single(edit.anchor, edit.head), scrollIntoView: true })
+  return true
+}
+
+export const insertHorizontalRule: Command = (view): boolean => {
+  const line = view.state.doc.lineAt(view.state.selection.main.head)
+  view.dispatch({ changes: { from: line.from, to: line.to, insert: '***' }, scrollIntoView: true })
   return true
 }
 

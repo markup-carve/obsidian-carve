@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { headingEdit, inlineFormatEdit, linkFormatEdit, simpleTableEdit } from '../dist-test/editor-commands.js'
+import { fencedBlockEdit, headingEdit, inlineFormatEdit, linePrefixEdit, linkFormatEdit, simpleTableEdit } from '../dist-test/editor-commands.js'
 
 function apply(source, changes) {
   for (const change of [...changes].reverse()) source = source.slice(0, change.from) + change.insert + source.slice(change.to)
@@ -46,4 +46,25 @@ test('table column commands modify every row on the selected axis', () => {
 test('table commands refuse escaped and ragged grids', () => {
   assert.equal(simpleTableEdit('| a \\| b |', 3, 'column-after'), null)
   assert.equal(simpleTableEdit('| a | b |\n| x |', 3, 'column-after'), null)
+})
+
+test('table deletion protects the final row and column', () => {
+  const source = '| A | B |\n| x | y |'
+  assert.equal(apply(source, simpleTableEdit(source, 16, 'delete-row').changes), '| A | B |')
+  assert.equal(apply(source, simpleTableEdit(source, 16, 'delete-column').changes), '| A |\n| x |')
+  assert.equal(simpleTableEdit('| only |', 3, 'delete-row'), null)
+  assert.equal(simpleTableEdit('| only |', 3, 'delete-column'), null)
+})
+
+test('line prefixes toggle without changing line content', () => {
+  assert.equal(apply('human', linePrefixEdit('human', 0, 5, 'bullet').changes), '- human')
+  assert.equal(apply('- human', linePrefixEdit('- human', 0, 7, 'bullet').changes), 'human')
+  assert.equal(apply('- human', linePrefixEdit('- human', 0, 7, 'task').changes), '- [ ] human')
+  assert.equal(apply('human', linePrefixEdit('human', 0, 5, 'quote').changes), '> human')
+})
+
+test('code fences wrap only the selected source', () => {
+  const source = 'before\ncode\nafter'
+  const edit = fencedBlockEdit(source, 7, 11, 'js')
+  assert.equal(apply(source, edit.changes), 'before\n```js\ncode\n```\nafter')
 })
