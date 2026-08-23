@@ -11,7 +11,7 @@ Object.assign(globalThis, {
   HTMLTableElement: window.HTMLTableElement,
 })
 
-const { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, setTableCaption, sortTableColumn, tableCellRectangle, toggleTableHeader, toggleTableHeaderAxis } = await import('../dist-test/visual-table.js')
+const { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, setTableCaption, sortTableColumn, tableCellRectangle, tableCellsToTsv, toggleTableHeader, toggleTableHeaderAxis } = await import('../dist-test/visual-table.js')
 
 test('parses and bounds requested table dimensions', () => {
   assert.deepEqual(parseTableSize('3 × 4'), [3, 4])
@@ -55,8 +55,10 @@ test('inserts and deletes columns across both table axes', () => {
 })
 
 test('selects a rectangular range of simple table cells', () => {
-  const table = createTable(3, 3)
-  assert.equal(tableCellRectangle(table.rows[0].cells[1], table.rows[2].cells[2]).length, 6)
+  const table = createTable(3, 3); table.rows[0].cells[1].textContent = 'A'; table.rows[0].cells[2].textContent = 'B'; table.rows[1].cells[1].textContent = 'C'; table.rows[1].cells[2].textContent = 'D'
+  const rectangle = tableCellRectangle(table.rows[0].cells[1], table.rows[1].cells[2])
+  assert.equal(rectangle.length, 4)
+  assert.equal(tableCellsToTsv(rectangle), 'A\tB\nC\tD')
   const other = createTable(1, 1)
   assert.deepEqual(tableCellRectangle(table.rows[0].cells[0], other.rows[0].cells[0]), [])
 })

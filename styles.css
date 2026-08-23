@@ -181,6 +181,7 @@
 .carve-visual-opaque.is-block > :first-child { margin-top: 0; }
 .carve-visual-opaque.is-block > :last-child { margin-bottom: 0; }
 .carve-visual-opaque.is-inline { display: inline; white-space: normal; }
+.carve-visual-opaque:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 2px; }
 .carve-construct-editor textarea { width: 100%; min-height: 12rem; resize: vertical; font-family: var(--font-monospace); }
 .carve-construct-preview-label { margin-top: 1rem; color: var(--text-muted); font-size: var(--font-ui-small); font-weight: var(--font-semibold); }
 .carve-construct-preview { min-height: 4rem; margin-top: .35rem; padding: .75rem; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); }

@@ -9,7 +9,7 @@ import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
 import { appendOpaqueConstruct, editOpaqueWithPrompts, opaqueBlock, renderOpaqueConstruct, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource, type OpaqueConstruct } from './wysiwyg'
-import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureCellPlaceholder, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, tableCellRectangle, toggleTableHeader, toggleTableHeaderAxis } from './visual-table'
+import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureCellPlaceholder, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, tableCellRectangle, tableCellsToTsv, toggleTableHeader, toggleTableHeaderAxis } from './visual-table'
 import { applyVisualInputRule, backspaceVisualListItem, clearVisualFormatting, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, insertVisualRule, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
 import { captureVisualSnapshot, restoreVisualSnapshot, type VisualSnapshot } from './visual-history'
 
@@ -33,7 +33,7 @@ class CarveConstructModal extends Modal {
     const editor = this.contentEl.createEl('textarea', { attr: { 'aria-label': 'Exact Carve source', rows: '10', spellcheck: 'false' } })
     editor.value = this.item.source
     this.contentEl.createDiv({ cls: 'carve-construct-preview-label', text: 'Live preview' })
-    const preview = this.contentEl.createDiv({ cls: ['carve-construct-preview', 'markdown-rendered'] })
+    const preview = this.contentEl.createDiv({ cls: ['carve-construct-preview', 'markdown-rendered'], attr: { role: 'status', 'aria-live': 'polite', 'aria-label': 'Construct preview' } })
     const update = (): void => { preview.innerHTML = renderOpaqueConstruct({ ...this.item, source: editor.value }) }
     editor.addEventListener('input', update); update()
     const actions = this.contentEl.createDiv({ cls: 'carve-construct-actions' })
@@ -52,6 +52,7 @@ export class CarveView extends TextFileView {
   private renderSerial = 0
   private saveTimer: number | null = null
   private visualOriginal = ''
+  private visualCleanup: (() => void) | null = null
 
   constructor(leaf: WorkspaceLeaf, private plugin: CarvePlugin) { super(leaf); this.navigation = true }
   getViewType(): string { return CARVE_VIEW_TYPE }
@@ -80,6 +81,7 @@ export class CarveView extends TextFileView {
     this.saveTimer = null
     this.editor?.destroy()
     this.editor = null
+    this.visualCleanup?.(); this.visualCleanup = null
   }
 
   private createEditor(parent: HTMLElement, livePreview?: HTMLElement): void {
@@ -187,6 +189,7 @@ export class CarveView extends TextFileView {
       status.toggleClass('is-warning', result.diagnostics.length > 0)
       if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
       this.saveTimer = window.setTimeout(() => { this.requestSave(); this.saveTimer = null }, 250)
+      updateTableTools?.()
     }
     const savedRange = (): Range | null => {
       const selection = document.getSelection()
@@ -208,8 +211,8 @@ export class CarveView extends TextFileView {
     }
     const commands: Array<[string, string, () => boolean, string?]> = [
       ['B', 'Bold', () => inlineCommand('strong'), 'strong'], ['I', 'Italic', () => inlineCommand('em'), 'em'], ['U', 'Underline', () => inlineCommand('u'), 'u'], ['S', 'Strikethrough', () => inlineCommand('s'), 's'],
-      ['P', 'Paragraph', () => formatVisualBlock(surface, 'p')], ['H1', 'Heading 1', () => formatVisualBlock(surface, 'h1')], ['H2', 'Heading 2', () => formatVisualBlock(surface, 'h2')], ['H3', 'Heading 3', () => formatVisualBlock(surface, 'h3')], ['H4', 'Heading 4', () => formatVisualBlock(surface, 'h4')], ['H5', 'Heading 5', () => formatVisualBlock(surface, 'h5')], ['H6', 'Heading 6', () => formatVisualBlock(surface, 'h6')], ['<>', 'Code block', () => formatVisualBlock(surface, 'pre')],
-      ['x²', 'Superscript', () => inlineCommand('sup'), 'sup'], ['x₂', 'Subscript', () => inlineCommand('sub'), 'sub'], ['•', 'Bulleted list', () => toggleVisualList(surface, false)], ['1.', 'Numbered list', () => toggleVisualList(surface, true)], ['☐', 'Task list', () => toggleVisualTaskAtSelection(surface)], ['❯', 'Block quote', () => formatVisualBlock(surface, 'blockquote')],
+      ['P', 'Paragraph', () => formatVisualBlock(surface, 'p'), 'p'], ['H1', 'Heading 1', () => formatVisualBlock(surface, 'h1'), 'h1'], ['H2', 'Heading 2', () => formatVisualBlock(surface, 'h2'), 'h2'], ['H3', 'Heading 3', () => formatVisualBlock(surface, 'h3'), 'h3'], ['H4', 'Heading 4', () => formatVisualBlock(surface, 'h4'), 'h4'], ['H5', 'Heading 5', () => formatVisualBlock(surface, 'h5'), 'h5'], ['H6', 'Heading 6', () => formatVisualBlock(surface, 'h6'), 'h6'], ['<>', 'Code block', () => formatVisualBlock(surface, 'pre'), 'pre'],
+      ['x²', 'Superscript', () => inlineCommand('sup'), 'sup'], ['x₂', 'Subscript', () => inlineCommand('sub'), 'sub'], ['•', 'Bulleted list', () => toggleVisualList(surface, false), 'ul'], ['1.', 'Numbered list', () => toggleVisualList(surface, true), 'ol'], ['☐', 'Task list', () => toggleVisualTaskAtSelection(surface)], ['❯', 'Block quote', () => formatVisualBlock(surface, 'blockquote'), 'blockquote'],
       ['`c`', 'Inline code', () => inlineCommand('code'), 'code'], ['=', 'Highlight', () => inlineCommand('mark'), 'mark'],
       ['―', 'Horizontal rule', () => insertVisualRule(surface)], ['Tx', 'Remove formatting', () => clearVisualFormatting(surface)],
     ]
@@ -230,17 +233,18 @@ export class CarveView extends TextFileView {
     undo.addEventListener('mousedown', (event) => { event.preventDefault(); if (historyIndex > 0) { restoreVisualSnapshot(surface, history[--historyIndex]!); ensureTablePlaceholders(surface); sync(false) } surface.focus() })
     const redo = toolbar.createEl('button', { text: 'Redo', attr: { type: 'button' } })
     redo.addEventListener('mousedown', (event) => { event.preventDefault(); if (historyIndex + 1 < history.length) { restoreVisualSnapshot(surface, history[++historyIndex]!); ensureTablePlaceholders(surface); sync(false) } surface.focus() })
+    let openOpaqueEditor: (target: EventTarget | null) => boolean = () => false
     const insertAdvanced = (label: string, kind: string, source: string): void => {
       const button = toolbar.createEl('button', { text: label, attr: { type: 'button', title: `Insert ${kind}`, 'aria-label': `Insert ${kind}` } })
       button.addEventListener('mousedown', (event) => {
-        event.preventDefault(); const range = savedRange(); const created = appendOpaqueConstruct(visual.opaque, kind, source)
+        event.preventDefault(); const range = savedRange(); const created = appendOpaqueConstruct(visual.opaque, kind, source, this.source)
         const island = document.createElement('carve-opaque'); island.className = `carve-visual-opaque ${opaqueBlock(created.item) ? 'is-block' : 'is-inline'}`
         island.dataset.carveOpaque = String(created.index); island.contentEditable = 'false'; island.setAttribute('role', 'button'); island.tabIndex = 0
         island.setAttribute('aria-label', `Edit ${kind} construct`); island.title = 'Double-click for live source editing; Enter for structured fields'; island.innerHTML = renderOpaqueConstruct(created.item)
         const anchor = range?.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range?.commonAncestorContainer.parentElement
         const block = anchor?.closest('p,h1,h2,h3,h4,h5,h6,blockquote,ul,ol,pre,table')
         if (opaqueBlock(created.item) && block && surface.contains(block)) block.after(island); else if (range) { range.deleteContents(); range.insertNode(island) } else surface.append(island)
-        void this.decorateVisualRich(island); sync(); island.focus(); status.setText(`${kind} inserted. Double-click it for live editing.`)
+        void this.decorateVisualRich(island); sync(); island.focus(); status.setText(`${kind} inserted.`); openOpaqueEditor(island)
       })
     }
     insertAdvanced('Math', 'math', '$`x + y`')
@@ -251,7 +255,7 @@ export class CarveView extends TextFileView {
     let activeTableCell: HTMLTableCellElement | null = null
     let tableSelectionAnchor: HTMLTableCellElement | null = null
     let selectedTableCells: HTMLTableCellElement[] = []
-    const clearCellSelection = (): void => { for (const cell of selectedTableCells) cell.removeClass('is-carve-selected'); selectedTableCells = [] }
+    const clearCellSelection = (): void => { for (const cell of selectedTableCells) { cell.removeClass('is-carve-selected'); cell.removeAttribute('aria-selected') }; selectedTableCells = [] }
     const runTableAction = (action: (cell: HTMLTableCellElement) => HTMLTableCellElement | null): void => {
         const cell = selectionCell(surface) ?? activeTableCell
         if (!cell) return
@@ -303,6 +307,12 @@ export class CarveView extends TextFileView {
       for (const cell of targets) { cell.textContent = ''; ensureCellPlaceholder(cell) }
       clearCellSelection(); sync(); status.setText(`${targets.length} table cell${targets.length === 1 ? '' : 's'} cleared.`); updateTableTools()
     })
+    const copyCells = tableTools.createEl('button', { text: 'Copy cells', attr: { type: 'button', title: 'Copy selected cells as tab-separated text' } })
+    copyCells.addEventListener('mousedown', (event) => {
+      event.preventDefault(); const targets = selectedTableCells.length ? selectedTableCells : activeTableCell ? [activeTableCell] : []; const text = tableCellsToTsv(targets)
+      if (!text) return
+      void navigator.clipboard.writeText(text).then(() => status.setText(`${targets.length} cell${targets.length === 1 ? '' : 's'} copied.`), () => { status.setText('Clipboard access was unavailable.'); status.addClass('is-warning') })
+    })
     const caption = tableTools.createEl('button', { text: 'Caption', attr: { type: 'button' } })
     caption.addEventListener('mousedown', (event) => {
       event.preventDefault(); const cell = selectionCell(surface); const table = cell?.closest('table'); if (!table) return
@@ -325,6 +335,7 @@ export class CarveView extends TextFileView {
       activeTableCell = selectionCell(surface)
       const hasActiveCell = Boolean(activeTableCell && surface.contains(activeTableCell))
       tableTools.toggleClass('is-active', hasActiveCell); quickTableTools.toggleClass('is-active', hasActiveCell)
+      undo.disabled = historyIndex === 0; redo.disabled = historyIndex + 1 >= history.length
       if (hasActiveCell) {
         const rect = activeTableCell!.getBoundingClientRect()
         quickTableTools.style.left = `${Math.max(8, Math.min(window.innerWidth - 154, rect.left))}px`
@@ -351,12 +362,20 @@ export class CarveView extends TextFileView {
       const target = event.target instanceof Element ? event.target.closest<HTMLTableCellElement>('td,th') : null
       if (target && event.shiftKey && tableSelectionAnchor?.closest('table') === target.closest('table')) {
         clearCellSelection(); selectedTableCells = tableCellRectangle(tableSelectionAnchor, target)
-        for (const cell of selectedTableCells) cell.addClass('is-carve-selected')
+        for (const cell of selectedTableCells) { cell.addClass('is-carve-selected'); cell.setAttribute('aria-selected', 'true') }
         status.setText(`${selectedTableCells.length} cells selected. Use Clear cells or a table operation.`)
       } else { clearCellSelection(); tableSelectionAnchor = target }
       updateTableTools()
     })
     surface.addEventListener('scroll', updateTableTools, { passive: true })
+    const repositionTableTools = (): void => updateTableTools()
+    window.addEventListener('resize', repositionTableTools)
+    this.visualCleanup = () => window.removeEventListener('resize', repositionTableTools)
+    surface.addEventListener('focusout', (event) => {
+      const next = event.relatedTarget
+      if (next instanceof Node && (surface.contains(next) || toolbar.contains(next) || quickTableTools.contains(next))) return
+      activeTableCell = null; clearCellSelection(); tableTools.removeClass('is-active'); quickTableTools.removeClass('is-active')
+    })
     surface.addEventListener('change', (event) => {
       const checkbox = event.target
       if (checkbox instanceof HTMLInputElement && toggleVisualTask(surface, checkbox)) { sync(); status.setText(checkbox.checked ? 'Task completed.' : 'Task reopened.') }
@@ -373,7 +392,7 @@ export class CarveView extends TextFileView {
       status.setText('Protected construct updated byte-for-byte.'); status.removeClass('is-warning'); sync(); island.focus()
       return true
     }
-    const openOpaqueEditor = (target: EventTarget | null): boolean => {
+    openOpaqueEditor = (target: EventTarget | null): boolean => {
       const island = target instanceof Element ? target.closest<HTMLElement>('.carve-visual-opaque') : null
       const index = Number(island?.dataset.carveOpaque)
       if (!island || !Number.isInteger(index) || !visual.opaque[index]) return false

@@ -56,12 +56,15 @@ test('collapsed-caret formatting applies to subsequently typed text', () => {
   const surface = document.createElement('article'); surface.innerHTML = '<p>say </p>'; document.body.append(surface)
   assert.equal(insertFormattedText(surface, 'hello', ['strong', 'em'], selectTextNode(surface.querySelector('p'), 4)), true)
   assert.equal(surface.innerHTML, '<p>say <em><strong>hello</strong></em></p>')
+  assert.equal(insertFormattedText(surface, '!', ['strong', 'em'], document.getSelection()), true)
+  assert.equal(surface.innerHTML, '<p>say <em><strong>hello!</strong></em></p>')
 })
 
 test('links can be inserted at a collapsed caret without a dummy selection', () => {
   const surface = document.createElement('article'); surface.innerHTML = '<p>See </p>'; document.body.append(surface)
   assert.equal(insertVisualLink(surface, 'https://example.com', 'Example', selectTextNode(surface.querySelector('p'), 4)), true)
   assert.equal(surface.innerHTML, '<p>See <a href="https://example.com">Example</a></p>')
+  assert.equal(insertVisualLink(surface, 'javascript:alert(1)', 'unsafe', document.getSelection()), false)
 })
 
 test('structured formatting uses Range and DOM operations', () => {
@@ -74,6 +77,15 @@ test('structured formatting uses Range and DOM operations', () => {
   assert.equal(surface.querySelector('h3').textContent, 'human text')
   assert.equal(toggleVisualList(surface, false, document.getSelection()), true)
   assert.equal(surface.innerHTML, '<ul><li><strong>human</strong> text</li></ul>')
+})
+
+test('multi-block formatting preserves a useful selection across transformed blocks', () => {
+  const surface = document.createElement('article'); surface.innerHTML = '<p>one</p><p>two</p>'; document.body.append(surface)
+  const range = document.createRange(); range.setStart(surface.firstElementChild.firstChild, 0); range.setEnd(surface.lastElementChild.firstChild, 3)
+  const selection = document.getSelection(); selection.removeAllRanges(); selection.addRange(range)
+  assert.equal(formatVisualBlock(surface, 'blockquote', selection), true)
+  assert.equal(surface.innerHTML, '<blockquote>one</blockquote><blockquote>two</blockquote>')
+  assert.equal(selection.toString(), 'onetwo')
 })
 
 test('Tab and Shift+Tab nest and unnest visual list items', () => {
@@ -95,6 +107,13 @@ test('list conversion preserves every sibling and changes list kind structurally
   selectTextNode(surface.querySelector('li'), 1)
   assert.equal(toggleVisualList(surface, true), true)
   assert.equal(surface.innerHTML, '<ol><li>one</li></ol><p>two</p><ul><li>three</li></ul>')
+})
+
+test('leaving a parent list item preserves and outdents its nested children', () => {
+  const surface = document.createElement('article'); surface.innerHTML = '<ul><li>parent<ul><li>child</li></ul></li><li>after</li></ul>'; document.body.append(surface)
+  selectTextNode(surface.querySelector('li'), 2)
+  assert.equal(toggleVisualList(surface, false), true)
+  assert.equal(surface.innerHTML, '<p>parent</p><ul><li>child</li><li>after</li></ul>')
 })
 
 test('Enter splits a visual list item at the caret', () => {
@@ -134,6 +153,12 @@ test('rich paste is allowlisted and strips executable or presentation markup', (
   const surface = document.createElement('article'); surface.innerHTML = '<p>start </p>'; document.body.append(surface)
   assert.equal(insertSanitizedHtml(surface, '<strong style="color:red">safe</strong><script>alert(1)</script><a href="javascript:x">link</a>', selectTextNode(surface.querySelector('p'), 6)), true)
   assert.equal(surface.innerHTML, '<p>start <strong>safe</strong>alert(1)<a>link</a></p>')
+})
+
+test('rich paste retains safe relative vault links', () => {
+  const surface = document.createElement('article'); surface.innerHTML = '<p><br></p>'; document.body.append(surface); placeSelection(surface.querySelector('p'))
+  assert.equal(insertSanitizedHtml(surface, '<a href="notes/Guide.crv">Guide</a>', document.getSelection()), true)
+  assert.match(surface.innerHTML, /href="notes\/Guide\.crv"/)
 })
 
 test('Enter continues normal and task lists and exits an empty list item', () => {

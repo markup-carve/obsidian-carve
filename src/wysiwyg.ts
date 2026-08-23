@@ -32,9 +32,9 @@ export function updateOpaqueConstruct(opaque: readonly OpaqueConstruct[], index:
   return item
 }
 
-export function appendOpaqueConstruct(opaque: readonly OpaqueConstruct[], kind: string, source: string): { item: OpaqueConstruct; index: number } {
+export function appendOpaqueConstruct(opaque: readonly OpaqueConstruct[], kind: string, source: string, reservedSource = ''): { item: OpaqueConstruct; index: number } {
   const items = opaque as OpaqueConstruct[]; let token = `CARVEOPAQUE${items.length}X9F3A`
-  while (items.some((item) => item.token === token || item.source.includes(token)) || source.includes(token)) token += 'X'
+  while (reservedSource.includes(token) || items.some((item) => item.token === token || item.source.includes(token)) || source.includes(token)) token += 'X'
   const item = { token, source, kind, label: opaqueLabel(kind, source) }; items.push(item)
   return { item, index: items.length - 1 }
 }

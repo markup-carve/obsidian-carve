@@ -1,6 +1,7 @@
 # Changelog
 
 - Move Visual mode beyond syntax-first Markdown workflows with no-syntax task creation/toggling, direct Math/Mermaid/callout/footnote insertion, horizontal-rule and code-block input rules, familiar heading/list/task shortcuts, cell-adjacent table insertion controls, and Shift-click rectangular cell selection with batch clearing.
+- Complete ten post-parity UX passes: preserve multi-block selections and nested-list children, add Source/Split task toggling, keep consecutive styled typing in one semantic run, validate link schemes while retaining vault-relative links, clean up responsive table controls, copy rectangular cells as TSV, avoid protected-token collisions, open inserted constructs directly in their live editor, and strengthen focus/ARIA/history states.
 - Harden Visual mode as a real structured editor: lossless sibling-preserving list conversion, caret-aware list splitting/joining/outdenting, clickable tasks, selection-restoring undo/redo, collapsed-caret formatting, active toolbar state, sanitized rich paste, and IME-aware input.
 - Unify table changes with document history, add explicit boundary feedback and Ctrl/Cmd+Arrow cell navigation, and replace double-click prompt chains for advanced constructs with a multiline editor and live preview.
 - Make Tab/Shift+Tab and Enter list-aware in Visual, Source, and Live split modes, including nesting, outdenting, numbered continuation, task continuation, multi-row indentation, and empty-item exit.

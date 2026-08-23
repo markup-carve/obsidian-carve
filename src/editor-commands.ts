@@ -203,6 +203,19 @@ export function listContinuationEdit(source: string, lineFrom: number, lineTo: n
   return { changes: [{ from: head, to: head, insert: `\n${prefix}` }], anchor: head + prefix.length + 1, head: head + prefix.length + 1 }
 }
 
+export function taskToggleEdit(source: string, lineFrom: number, lineTo: number): FormatEdit {
+  const line = source.slice(lineFrom, lineTo)
+  const task = /^([ \t]*[-+*][ \t]+)\[([ xX-])\]([ \t]+)/.exec(line)
+  if (task) {
+    const from = lineFrom + task[1]!.length + 1; const checked = task[2]!.toLowerCase() === 'x'
+    return { changes: [{ from, to: from + 1, insert: checked ? ' ' : 'x' }], anchor: from, head: from }
+  }
+  const marker = /^([ \t]*)[-+*][ \t]+/.exec(line)
+  if (marker) return { changes: [{ from: lineFrom + marker[1]!.length, to: lineFrom + marker[0].length, insert: '- [ ] ' }], anchor: lineFrom + marker[1]!.length + 6, head: lineFrom + marker[1]!.length + 6 }
+  const indent = /^[ \t]*/.exec(line)?.[0] ?? ''
+  return { changes: [{ from: lineFrom + indent.length, to: lineFrom + indent.length, insert: '- [ ] ' }], anchor: lineFrom + indent.length + 6, head: lineFrom + indent.length + 6 }
+}
+
 function changeListIndent(outdent: boolean): Command {
   return (view) => {
     const selection = view.state.selection.main
@@ -224,6 +237,10 @@ const continueList: Command = (view) => {
   const line = view.state.doc.lineAt(selection.head); const edit = listContinuationEdit(view.state.doc.toString(), line.from, line.to, selection.head)
   if (!edit) return false; view.dispatch({ changes: edit.changes, selection: EditorSelection.cursor(edit.head), scrollIntoView: true }); return true
 }
+const toggleTaskAtCursor: Command = (view) => {
+  const line = view.state.doc.lineAt(view.state.selection.main.head); const edit = taskToggleEdit(view.state.doc.toString(), line.from, line.to)
+  view.dispatch({ changes: edit.changes, scrollIntoView: true }); return true
+}
 
 export const carveEditorCommands: Extension = Prec.highest(keymap.of([
   { key: 'Mod-b', run: toggleStrong },
@@ -232,6 +249,7 @@ export const carveEditorCommands: Extension = Prec.highest(keymap.of([
   { key: 'Mod-Shift-h', run: toggleHighlight },
   { key: 'Mod-Shift-c', run: toggleCode },
   { key: 'Mod-k', run: createLink },
+  { key: 'Mod-Enter', run: toggleTaskAtCursor },
   { key: 'Tab', run: indentList },
   { key: 'Shift-Tab', run: outdentList },
   { key: 'Enter', run: continueList },

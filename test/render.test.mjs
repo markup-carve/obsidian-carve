@@ -123,8 +123,9 @@ test('protected constructs can be explicitly edited without exposing their place
 
 test('new advanced constructs can be inserted into a visual document losslessly', () => {
   const visual = sourceToVisualDocument('Before\n')
-  const created = appendOpaqueConstruct(visual.opaque, 'math', '$`x + y`')
+  const created = appendOpaqueConstruct(visual.opaque, 'math', '$`x + y`', 'CARVEOPAQUE0X9F3A')
   assert.equal(created.index, 0)
+  assert.notEqual(created.item.token, 'CARVEOPAQUE0X9F3A')
   const html = `${visual.html}<carve-opaque data-carve-opaque="0"></carve-opaque>`
   assert.equal(visualHtmlToSource(html, visual.frontmatter, visual.opaque).source, 'Before\n\n$`x + y`\n')
 })

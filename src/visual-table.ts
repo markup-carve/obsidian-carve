@@ -43,6 +43,16 @@ export function tableCellRectangle(anchor: HTMLTableCellElement, focus: HTMLTabl
   return cells
 }
 
+export function tableCellsToTsv(cells: readonly HTMLTableCellElement[]): string {
+  if (!cells.length) return ''
+  const rows = new Map<number, HTMLTableCellElement[]>()
+  for (const cell of cells) {
+    const row = (cell.parentElement as HTMLTableRowElement).rowIndex
+    const entries = rows.get(row) ?? []; entries.push(cell); rows.set(row, entries)
+  }
+  return [...rows.entries()].sort(([a], [b]) => a - b).map(([, entries]) => entries.sort((a, b) => a.cellIndex - b.cellIndex).map((cell) => (cell.textContent ?? '').replace(/[\t\r\n]+/g, ' ')).join('\t')).join('\n')
+}
+
 export function isSimpleTable(table: HTMLTableElement): boolean {
   return !table.querySelector('td[rowspan],td[colspan],th[rowspan],th[colspan]')
 }

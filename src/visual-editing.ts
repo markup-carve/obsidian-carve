@@ -74,15 +74,22 @@ export function insertPlainText(surface: HTMLElement, text: string, selection: S
 
 export function insertFormattedText(surface: HTMLElement, text: string, tags: readonly string[], selection: Selection | null = document.getSelection()): boolean {
   const range = rangeIn(surface, selection); if (!range || !range.collapsed || !text) return false
-  let content: Node = document.createTextNode(text)
+  const anchor = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement
+  if (tags.every((tag) => anchor?.closest(tag) && surface.contains(anchor.closest(tag)))) return insertPlainText(surface, text, selection)
+  const textNode = document.createTextNode(text); let content: Node = textNode
   for (const tag of tags) { const wrapper = document.createElement(tag); wrapper.append(content); content = wrapper }
   range.insertNode(content)
-  range.setStartAfter(content); range.collapse(true); selection?.removeAllRanges(); selection?.addRange(range)
+  range.setStart(textNode, textNode.length); range.collapse(true); selection?.removeAllRanges(); selection?.addRange(range)
   return true
 }
 
+export function safeVisualHref(href: string): boolean {
+  const value = href.trim(); if (!value || /[\u0000-\u001f]/.test(value)) return false
+  return /^(?:https?:|mailto:|tel:|obsidian:|#|\/)/i.test(value) || !/^[a-z][a-z0-9+.-]*:/i.test(value)
+}
+
 export function insertVisualLink(surface: HTMLElement, href: string, label = href, selection: Selection | null = document.getSelection()): boolean {
-  const range = rangeIn(surface, selection); if (!range || !href) return false
+  const range = rangeIn(surface, selection); if (!range || !safeVisualHref(href)) return false
   if (!range.collapsed) return wrapVisualSelection(surface, 'a', { href }, selection)
   const link = document.createElement('a'); link.href = href; link.textContent = label || href; range.insertNode(link)
   range.setStartAfter(link); range.collapse(true); selection?.removeAllRanges(); selection?.addRange(range); return true
@@ -113,14 +120,18 @@ export function formatVisualBlock(surface: HTMLElement, tag: string, selection: 
     ? Array.from(surface.querySelectorAll<HTMLElement>('p,h1,h2,h3,h4,h5,h6,blockquote,pre')).filter((candidate) => range.intersectsNode(candidate) && !candidate.parentElement?.closest('blockquote'))
     : [block]
   if (!blocks.length) return false
-  let first: HTMLElement | null = null
+  let first: HTMLElement | null = null; let last: HTMLElement | null = null
   for (const current of blocks) {
     const replacement = document.createElement(tag)
     if (tag === 'pre') replacement.textContent = current.textContent
     else while (current.firstChild) replacement.append(current.firstChild)
-    current.replaceWith(replacement); first ??= replacement
+    current.replaceWith(replacement); first ??= replacement; last = replacement
   }
-  if (first) placeCaretAtStart(first); return true
+  if (first && last && blocks.length > 1 && selection) {
+    const restored = document.createRange(); restored.setStart(first, 0); restored.setEnd(last, last.childNodes.length)
+    selection.removeAllRanges(); selection.addRange(restored)
+  } else if (first) placeCaretAtStart(first)
+  return true
 }
 
 export function toggleVisualList(surface: HTMLElement, ordered: boolean, selection: Selection | null = document.getSelection()): boolean {
@@ -130,6 +141,7 @@ export function toggleVisualList(surface: HTMLElement, ordered: boolean, selecti
   const list = item?.parentElement
   const wanted = ordered ? 'OL' : 'UL'
   if (item && list?.tagName === wanted) {
+    const descendants = directList(item); descendants?.remove()
     const paragraph = document.createElement('p'); while (item.firstChild) paragraph.append(item.firstChild)
     const before = document.createElement(list.tagName.toLowerCase())
     const after = document.createElement(list.tagName.toLowerCase())
@@ -138,7 +150,8 @@ export function toggleVisualList(surface: HTMLElement, ordered: boolean, selecti
       if (sibling === item) { passed = true; continue }
       ;(passed ? after : before).append(sibling)
     }
-    list.replaceWith(...(before.children.length ? [before] : []), paragraph, ...(after.children.length ? [after] : [])); placeCaretAtStart(paragraph); return true
+    if (descendants?.tagName === after.tagName) { while (after.firstChild) descendants.append(after.firstChild) }
+    list.replaceWith(...(before.children.length ? [before] : []), paragraph, ...(descendants ? [descendants] : []), ...(after.children.length ? [after] : [])); placeCaretAtStart(paragraph); return true
   }
   if (item && list && /^(?:UL|OL)$/.test(list.tagName)) {
     const replacement = document.createElement(ordered ? 'ol' : 'ul')
@@ -249,9 +262,13 @@ export function backspaceVisualListItem(surface: HTMLElement, selection: Selecti
   if (indentVisualListItem(surface, true, selection)) return true
   const previous = item.previousElementSibling as HTMLLIElement | null
   if (previous?.tagName === 'LI') {
-    const nested = directList(previous); const marker = document.createComment('caret')
+    const nested = directList(previous); const ownNested = directList(item); ownNested?.remove(); const marker = document.createComment('caret')
     if (nested) previous.insertBefore(marker, nested); else previous.append(marker)
     while (item.firstChild) previous.insertBefore(item.firstChild, nested)
+    if (ownNested) {
+      if (nested?.tagName === ownNested.tagName) { while (ownNested.firstChild) nested.append(ownNested.firstChild) }
+      else previous.append(ownNested)
+    }
     item.remove(); const caret = document.createRange(); caret.setStartBefore(marker); caret.collapse(true); marker.remove()
     selection?.removeAllRanges(); selection?.addRange(caret); return true
   }
@@ -265,7 +282,7 @@ export function insertSanitizedHtml(surface: HTMLElement, html: string, selectio
   for (const element of Array.from(template.content.querySelectorAll('*'))) {
     if (!SAFE_PASTE_TAGS.has(element.tagName)) { element.replaceWith(...Array.from(element.childNodes)); continue }
     for (const attribute of Array.from(element.attributes)) if (!(element.tagName === 'A' && attribute.name === 'href')) element.removeAttribute(attribute.name)
-    if (element.tagName === 'A' && !/^(?:https?:|mailto:|#|\/)/i.test(element.getAttribute('href') ?? '')) element.removeAttribute('href')
+    if (element.tagName === 'A' && !safeVisualHref(element.getAttribute('href') ?? '')) element.removeAttribute('href')
   }
   range.deleteContents(); const tail = template.content.lastChild; range.insertNode(template.content)
   if (tail) { range.setStartAfter(tail); range.collapse(true); selection?.removeAllRanges(); selection?.addRange(range) }
