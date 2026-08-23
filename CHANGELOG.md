@@ -1,5 +1,7 @@
 # Changelog
 
+- Add source-authoritative Live Preview for headings and inline emphasis, backed by carve-js editor snapshots. Syntax markers hide away from the cursor and reveal for editing.
+
 ## Unreleased
 
 - Treat browser-generated empty visual rows as ordinary block spacing instead

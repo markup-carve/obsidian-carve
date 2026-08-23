@@ -6,6 +6,7 @@ import { CarveIndex } from './indexer'
 import { extractMetadata, withCrvExtension, type CarveMetadata } from './metadata'
 import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
+import { carveLivePreview } from './live-preview'
 import { sourceToVisualDocument, visualHtmlToSource } from './wysiwyg'
 import { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, parseTableSize, selectionCell, setTableCaption, toggleTableHeader } from './visual-table'
 
@@ -63,7 +64,7 @@ export class CarveView extends TextFileView {
       parent,
       state: EditorState.create({
         doc: this.source,
-        extensions: [basicSetup, carveLanguage, carveHighlighting, EditorView.lineWrapping,
+        extensions: [basicSetup, carveLanguage, carveHighlighting, carveLivePreview, EditorView.lineWrapping,
           EditorView.contentAttributes.of({ 'aria-label': 'Carve source' }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return
