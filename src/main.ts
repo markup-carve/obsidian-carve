@@ -8,9 +8,9 @@ import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
-import { editOpaqueWithPrompts, renderOpaqueConstruct, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource, type OpaqueConstruct } from './wysiwyg'
-import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, toggleTableHeader, toggleTableHeaderAxis } from './visual-table'
-import { applyVisualInputRule, backspaceVisualListItem, clearVisualFormatting, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, insertVisualRule, toggleVisualList, toggleVisualTask, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
+import { appendOpaqueConstruct, editOpaqueWithPrompts, opaqueBlock, renderOpaqueConstruct, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource, type OpaqueConstruct } from './wysiwyg'
+import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureCellPlaceholder, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, tableCellRectangle, toggleTableHeader, toggleTableHeaderAxis } from './visual-table'
+import { applyVisualInputRule, backspaceVisualListItem, clearVisualFormatting, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, insertVisualRule, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
 import { captureVisualSnapshot, restoreVisualSnapshot, type VisualSnapshot } from './visual-history'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
@@ -209,7 +209,7 @@ export class CarveView extends TextFileView {
     const commands: Array<[string, string, () => boolean, string?]> = [
       ['B', 'Bold', () => inlineCommand('strong'), 'strong'], ['I', 'Italic', () => inlineCommand('em'), 'em'], ['U', 'Underline', () => inlineCommand('u'), 'u'], ['S', 'Strikethrough', () => inlineCommand('s'), 's'],
       ['P', 'Paragraph', () => formatVisualBlock(surface, 'p')], ['H1', 'Heading 1', () => formatVisualBlock(surface, 'h1')], ['H2', 'Heading 2', () => formatVisualBlock(surface, 'h2')], ['H3', 'Heading 3', () => formatVisualBlock(surface, 'h3')], ['H4', 'Heading 4', () => formatVisualBlock(surface, 'h4')], ['H5', 'Heading 5', () => formatVisualBlock(surface, 'h5')], ['H6', 'Heading 6', () => formatVisualBlock(surface, 'h6')], ['<>', 'Code block', () => formatVisualBlock(surface, 'pre')],
-      ['x²', 'Superscript', () => inlineCommand('sup'), 'sup'], ['x₂', 'Subscript', () => inlineCommand('sub'), 'sub'], ['•', 'Bulleted list', () => toggleVisualList(surface, false)], ['1.', 'Numbered list', () => toggleVisualList(surface, true)], ['❯', 'Block quote', () => formatVisualBlock(surface, 'blockquote')],
+      ['x²', 'Superscript', () => inlineCommand('sup'), 'sup'], ['x₂', 'Subscript', () => inlineCommand('sub'), 'sub'], ['•', 'Bulleted list', () => toggleVisualList(surface, false)], ['1.', 'Numbered list', () => toggleVisualList(surface, true)], ['☐', 'Task list', () => toggleVisualTaskAtSelection(surface)], ['❯', 'Block quote', () => formatVisualBlock(surface, 'blockquote')],
       ['`c`', 'Inline code', () => inlineCommand('code'), 'code'], ['=', 'Highlight', () => inlineCommand('mark'), 'mark'],
       ['―', 'Horizontal rule', () => insertVisualRule(surface)], ['Tx', 'Remove formatting', () => clearVisualFormatting(surface)],
     ]
@@ -230,19 +230,43 @@ export class CarveView extends TextFileView {
     undo.addEventListener('mousedown', (event) => { event.preventDefault(); if (historyIndex > 0) { restoreVisualSnapshot(surface, history[--historyIndex]!); ensureTablePlaceholders(surface); sync(false) } surface.focus() })
     const redo = toolbar.createEl('button', { text: 'Redo', attr: { type: 'button' } })
     redo.addEventListener('mousedown', (event) => { event.preventDefault(); if (historyIndex + 1 < history.length) { restoreVisualSnapshot(surface, history[++historyIndex]!); ensureTablePlaceholders(surface); sync(false) } surface.focus() })
-    const tableTools = toolbar.createDiv({ cls: 'carve-table-tools', attr: { role: 'group', 'aria-label': 'Table editing' } })
-    const tableAction = (label: string, action: (cell: HTMLTableCellElement) => HTMLTableCellElement | null): void => {
-      const button = tableTools.createEl('button', { text: label, attr: { type: 'button', title: label } })
+    const insertAdvanced = (label: string, kind: string, source: string): void => {
+      const button = toolbar.createEl('button', { text: label, attr: { type: 'button', title: `Insert ${kind}`, 'aria-label': `Insert ${kind}` } })
       button.addEventListener('mousedown', (event) => {
-        event.preventDefault()
-        const cell = selectionCell(surface)
+        event.preventDefault(); const range = savedRange(); const created = appendOpaqueConstruct(visual.opaque, kind, source)
+        const island = document.createElement('carve-opaque'); island.className = `carve-visual-opaque ${opaqueBlock(created.item) ? 'is-block' : 'is-inline'}`
+        island.dataset.carveOpaque = String(created.index); island.contentEditable = 'false'; island.setAttribute('role', 'button'); island.tabIndex = 0
+        island.setAttribute('aria-label', `Edit ${kind} construct`); island.title = 'Double-click for live source editing; Enter for structured fields'; island.innerHTML = renderOpaqueConstruct(created.item)
+        const anchor = range?.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range?.commonAncestorContainer.parentElement
+        const block = anchor?.closest('p,h1,h2,h3,h4,h5,h6,blockquote,ul,ol,pre,table')
+        if (opaqueBlock(created.item) && block && surface.contains(block)) block.after(island); else if (range) { range.deleteContents(); range.insertNode(island) } else surface.append(island)
+        void this.decorateVisualRich(island); sync(); island.focus(); status.setText(`${kind} inserted. Double-click it for live editing.`)
+      })
+    }
+    insertAdvanced('Math', 'math', '$`x + y`')
+    insertAdvanced('Diagram', 'mermaid', '```mermaid\ngraph TD\nA --> B\n```')
+    insertAdvanced('Callout', 'admonition', '::: note "Note"\nWrite here.\n:::')
+    insertAdvanced('Footnote', 'footnote', '[^note]: Footnote text')
+    const tableTools = toolbar.createDiv({ cls: 'carve-table-tools', attr: { role: 'group', 'aria-label': 'Table editing' } })
+    let activeTableCell: HTMLTableCellElement | null = null
+    let tableSelectionAnchor: HTMLTableCellElement | null = null
+    let selectedTableCells: HTMLTableCellElement[] = []
+    const clearCellSelection = (): void => { for (const cell of selectedTableCells) cell.removeClass('is-carve-selected'); selectedTableCells = [] }
+    const runTableAction = (action: (cell: HTMLTableCellElement) => HTMLTableCellElement | null): void => {
+        const cell = selectionCell(surface) ?? activeTableCell
         if (!cell) return
         if (!isSimpleTable(cell.closest('table')!)) { status.setText('Merged cells are protected from structural table edits; use Source view.'); status.addClass('is-warning'); return }
+        clearCellSelection()
         const target = action(cell)
         if (!target) { status.setText('That table operation is unavailable at this boundary.'); status.addClass('is-warning'); return }
         focusCell(target)
         sync()
         updateTableTools()
+    }
+    const tableAction = (label: string, action: (cell: HTMLTableCellElement) => HTMLTableCellElement | null): void => {
+      const button = tableTools.createEl('button', { text: label, attr: { type: 'button', title: label } })
+      button.addEventListener('mousedown', (event) => {
+        event.preventDefault(); runTableAction(action)
       })
     }
     tableAction('↑ Row', (cell) => addTableRow(cell, 'before')?.cells[cell.cellIndex] ?? null)
@@ -263,6 +287,22 @@ export class CarveView extends TextFileView {
     tableAction('Cell header', (cell) => toggleTableHeader(cell))
     tableAction('Row header', (cell) => toggleTableHeaderAxis(cell, 'row'))
     tableAction('Column header', (cell) => toggleTableHeaderAxis(cell, 'column'))
+    const quickTableTools = shell.createDiv({ cls: 'carve-table-quick-tools', attr: { role: 'group', 'aria-label': 'Quick table insertion' } })
+    const quickAction = (label: string, title: string, action: (cell: HTMLTableCellElement) => HTMLTableCellElement | null): void => {
+      const button = quickTableTools.createEl('button', { text: label, attr: { type: 'button', title, 'aria-label': title } })
+      button.addEventListener('mousedown', (event) => { event.preventDefault(); runTableAction(action) })
+    }
+    quickAction('+↑', 'Insert row above', (cell) => addTableRow(cell, 'before')?.cells[cell.cellIndex] ?? null)
+    quickAction('+↓', 'Insert row below', (cell) => addTableRow(cell, 'after')?.cells[cell.cellIndex] ?? null)
+    quickAction('+←', 'Insert column left', (cell) => addTableColumn(cell, 'before')[(cell.parentElement as HTMLTableRowElement).rowIndex] ?? null)
+    quickAction('+→', 'Insert column right', (cell) => addTableColumn(cell, 'after')[(cell.parentElement as HTMLTableRowElement).rowIndex] ?? null)
+    const clearCells = tableTools.createEl('button', { text: 'Clear cells', attr: { type: 'button', title: 'Clear selected cells' } })
+    clearCells.addEventListener('mousedown', (event) => {
+      event.preventDefault(); const targets = selectedTableCells.length ? selectedTableCells : activeTableCell ? [activeTableCell] : []
+      if (!targets.length) return
+      for (const cell of targets) { cell.textContent = ''; ensureCellPlaceholder(cell) }
+      clearCellSelection(); sync(); status.setText(`${targets.length} table cell${targets.length === 1 ? '' : 's'} cleared.`); updateTableTools()
+    })
     const caption = tableTools.createEl('button', { text: 'Caption', attr: { type: 'button' } })
     caption.addEventListener('mousedown', (event) => {
       event.preventDefault(); const cell = selectionCell(surface); const table = cell?.closest('table'); if (!table) return
@@ -282,7 +322,14 @@ export class CarveView extends TextFileView {
       focusCell(table.rows[0]?.cells[0]); sync(); updateTableTools()
     })
     const updateTableTools = (): void => {
-      tableTools.toggleClass('is-active', selectionCell(surface) !== null)
+      activeTableCell = selectionCell(surface)
+      const hasActiveCell = Boolean(activeTableCell && surface.contains(activeTableCell))
+      tableTools.toggleClass('is-active', hasActiveCell); quickTableTools.toggleClass('is-active', hasActiveCell)
+      if (hasActiveCell) {
+        const rect = activeTableCell!.getBoundingClientRect()
+        quickTableTools.style.left = `${Math.max(8, Math.min(window.innerWidth - 154, rect.left))}px`
+        quickTableTools.style.top = `${Math.max(8, rect.bottom + 42 < window.innerHeight ? rect.bottom + 4 : rect.top - 40)}px`
+      }
       const anchor = document.getSelection()?.anchorNode
       const element = anchor instanceof Element ? anchor : anchor?.parentElement
       for (const [tag, button] of commandButtons) { const active = pendingFormats.has(tag) || Boolean(element?.closest(tag)); button.toggleClass('is-active', active); button.setAttribute('aria-pressed', String(active)) }
@@ -300,7 +347,16 @@ export class CarveView extends TextFileView {
     })
     surface.addEventListener('compositionstart', () => status.setText('Composing text…'))
     surface.addEventListener('compositionend', () => { sync(); status.setText('Saved as Carve source.') })
-    surface.addEventListener('click', updateTableTools)
+    surface.addEventListener('click', (event) => {
+      const target = event.target instanceof Element ? event.target.closest<HTMLTableCellElement>('td,th') : null
+      if (target && event.shiftKey && tableSelectionAnchor?.closest('table') === target.closest('table')) {
+        clearCellSelection(); selectedTableCells = tableCellRectangle(tableSelectionAnchor, target)
+        for (const cell of selectedTableCells) cell.addClass('is-carve-selected')
+        status.setText(`${selectedTableCells.length} cells selected. Use Clear cells or a table operation.`)
+      } else { clearCellSelection(); tableSelectionAnchor = target }
+      updateTableTools()
+    })
+    surface.addEventListener('scroll', updateTableTools, { passive: true })
     surface.addEventListener('change', (event) => {
       const checkbox = event.target
       if (checkbox instanceof HTMLInputElement && toggleVisualTask(surface, checkbox)) { sync(); status.setText(checkbox.checked ? 'Task completed.' : 'Task reopened.') }
@@ -335,7 +391,12 @@ export class CarveView extends TextFileView {
         if (key === 'y' || (key === 'z' && event.shiftKey)) { event.preventDefault(); if (historyIndex + 1 < history.length) { restoreVisualSnapshot(surface, history[++historyIndex]!); ensureTablePlaceholders(surface); sync(false) }; return }
         const tag = key === 'b' ? 'strong' : key === 'i' ? 'em' : null
         if (tag) { event.preventDefault(); if (inlineCommand(tag)) sync(); return }
+        if (event.key === 'Enter') { event.preventDefault(); if (toggleVisualTaskAtSelection(surface)) sync(); return }
+        if (event.altKey && /^Digit[1-6]$/.test(event.code)) { event.preventDefault(); if (formatVisualBlock(surface, `h${event.code.slice(-1)}`)) sync(); return }
+        if (event.shiftKey && event.code === 'Digit7') { event.preventDefault(); if (toggleVisualList(surface, true)) sync(); return }
+        if (event.shiftKey && event.code === 'Digit8') { event.preventDefault(); if (toggleVisualList(surface, false)) sync(); return }
       }
+      if (event.key === 'Escape' && (pendingFormats.size || selectedTableCells.length)) { pendingFormats.clear(); clearCellSelection(); updateTableTools(); status.setText('Pending formatting and table selection cleared.'); return }
       if (event.key === 'Enter' && editOpaque(event.target)) { event.preventDefault(); return }
       if (event.key === 'Enter' && continueVisualList(surface)) { event.preventDefault(); sync(); return }
       if (event.key === 'Backspace' && backspaceVisualListItem(surface)) { event.preventDefault(); sync(); return }

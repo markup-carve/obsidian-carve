@@ -4,7 +4,7 @@ import { Window } from 'happy-dom'
 
 const window = new Window()
 Object.assign(globalThis, { document: window.document, Element: window.Element, HTMLLIElement: window.HTMLLIElement, HTMLInputElement: window.HTMLInputElement })
-const { applyVisualInputRule, backspaceVisualListItem, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, toggleVisualList, toggleVisualTask, wrapVisualSelection } = await import('../dist-test/visual-editing.js')
+const { applyVisualInputRule, backspaceVisualListItem, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, wrapVisualSelection } = await import('../dist-test/visual-editing.js')
 const { visualHtmlToSource } = await import('../dist-test/wysiwyg.js')
 
 function selectTextNode(element, offset) {
@@ -28,6 +28,14 @@ test('list and quote input rules create actual editable DOM blocks', () => {
   for (const [source, expected] of [['- ', '<ul><li><br></li></ul>'], ['1. ', '<ol><li><br></li></ol>'], ['> ', '<blockquote><br></blockquote>']]) {
     const surface = document.createElement('article'); const paragraph = document.createElement('p'); paragraph.textContent = source; surface.append(paragraph); document.body.append(surface)
     assert.equal(applyVisualInputRule(surface, selectTextNode(surface.firstElementChild, source.length)), true)
+    assert.equal(surface.innerHTML, expected)
+  }
+})
+
+test('horizontal-rule and code-fence input rules create visual blocks', () => {
+  for (const [source, expected] of [['--- ', '<hr><p><br></p>'], ['``` ', '<pre><br></pre>']]) {
+    const surface = document.createElement('article'); const paragraph = document.createElement('p'); paragraph.textContent = source; surface.append(paragraph); document.body.append(surface)
+    assert.equal(applyVisualInputRule(surface, selectTextNode(paragraph, source.length)), true)
     assert.equal(surface.innerHTML, expected)
   }
 })
@@ -101,6 +109,15 @@ test('visual task checkboxes are interactive and serialize their state', () => {
   const checkbox = surface.querySelector('input'); checkbox.checked = true
   assert.equal(toggleVisualTask(surface, checkbox), true)
   assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [x] task\n')
+})
+
+test('task toolbar converts prose and toggles an existing task without syntax', () => {
+  const surface = document.createElement('article'); surface.innerHTML = '<p>do this</p>'; document.body.append(surface)
+  selectTextNode(surface.querySelector('p'), 2)
+  assert.equal(toggleVisualTaskAtSelection(surface), true)
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] do this\n')
+  assert.equal(toggleVisualTaskAtSelection(surface), true)
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [x] do this\n')
 })
 
 test('Backspace joins a top-level list item and outdents a nested item', () => {
