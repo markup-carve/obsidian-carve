@@ -8,6 +8,7 @@ export type LivePresentation =
   | { kind: 'hide'; from: number; to: number }
   | { kind: 'mark'; from: number; to: number; className: string }
   | { kind: 'widget'; at: number; label: string; className: string }
+  | { kind: 'image'; at: number; destination: string; alt: string }
 
 export const LIVE_PREVIEW_IDLE_MS = 120
 export const LIVE_PREVIEW_MAX_SOURCE_LENGTH = 250_000
@@ -67,7 +68,8 @@ export function livePresentations(
         const end = start + match[0].length
         if (active({ start, end }, selections)) continue
         const embed = match[1] === '!'
-        presentations.push({ kind: 'widget', at: start, label: `${embed ? '🖼' : '↗'} ${match[3] ?? match[2]}`, className: embed ? 'carve-live-wiki-embed' : 'carve-live-wikilink' })
+        if (embed) presentations.push({ kind: 'image', at: start, destination: match[2]!, alt: match[3] ?? match[2]! })
+        else presentations.push({ kind: 'widget', at: start, label: `↗ ${match[3] ?? match[2]}`, className: 'carve-live-wikilink' })
         presentations.push({ kind: 'hide', from: start, to: end })
       }
       continue
@@ -133,7 +135,7 @@ export function livePresentations(
     if (node.type === 'image') {
       const image = /^!\[([^\]]*)\]\(([^)]*)\)$/.exec(authored)
       if (!image) continue
-      presentations.push({ kind: 'widget', at: node.start, label: `🖼 ${image[1] || image[2]}`, className: 'carve-live-image' })
+      presentations.push({ kind: 'image', at: node.start, destination: image[2]!, alt: image[1] || image[2]! })
       presentations.push({ kind: 'hide', from: node.start, to: node.end })
       continue
     }
@@ -257,12 +259,24 @@ class MarkerWidget extends WidgetType {
   eq(other: MarkerWidget): boolean { return this.label === other.label && this.className === other.className }
 }
 
-function decorations(session: EditorSession, selections: readonly SelectionRange[]): DecorationSet {
+class ImageWidget extends WidgetType {
+  constructor(private source: string | null, private alt: string) { super() }
+  toDOM(): HTMLElement {
+    if (!this.source) { const badge = document.createElement('span'); badge.className = 'carve-live-image'; badge.textContent = `🖼 ${this.alt}`; return badge }
+    const image = document.createElement('img'); image.className = 'carve-live-image-preview'; image.src = this.source; image.alt = this.alt; image.loading = 'lazy'; return image
+  }
+  eq(other: ImageWidget): boolean { return this.source === other.source && this.alt === other.alt }
+}
+
+export type ImageResolver = (destination: string) => string | null
+
+function decorations(session: EditorSession, selections: readonly SelectionRange[], resolveImage?: ImageResolver): DecorationSet {
   const snapshot = session.snapshot()
   const ranges = livePresentations(snapshot.source, selections, snapshot.nodes).flatMap((item) => {
     if (item.kind === 'hide') return [Decoration.replace({}).range(item.from, item.to)]
     if (item.kind === 'mark') return [Decoration.mark({ class: item.className }).range(item.from, item.to)]
     if (item.kind === 'widget') return [Decoration.widget({ widget: new MarkerWidget(item.label, item.className), side: -1 }).range(item.at)]
+    if (item.kind === 'image') return [Decoration.widget({ widget: new ImageWidget(resolveImage?.(item.destination) ?? null, item.alt), side: -1 }).range(item.at)]
     if (item.kind === 'line') return [Decoration.line({ class: item.className }).range(item.at)]
     return [Decoration.line({ class: `carve-live-heading carve-live-heading-${item.level}` }).range(item.from)]
   })
@@ -274,11 +288,11 @@ class LivePreviewState {
   private session: EditorSession | null = null
   private source: string
   private timer: ReturnType<typeof setTimeout> | null = null
-
-  constructor(view: EditorView) {
+  constructor(view: EditorView, private resolveImage?: ImageResolver) {
     this.source = view.state.doc.toString()
     this.schedule(view)
   }
+
 
   update(update: ViewUpdate): void {
     if (update.docChanged) {
@@ -286,7 +300,7 @@ class LivePreviewState {
       this.decorations = this.decorations.map(update.changes)
       this.schedule(update.view)
     }
-    if (update.selectionSet && this.session?.snapshot().source === this.source) this.decorations = decorations(this.session, update.state.selection.ranges)
+    if (update.selectionSet && this.session?.snapshot().source === this.source) this.decorations = decorations(this.session, update.state.selection.ranges, this.resolveImage)
   }
 
   destroy(): void { if (this.timer !== null) clearTimeout(this.timer) }
@@ -304,7 +318,7 @@ class LivePreviewState {
       this.timer = null
       if (view.state.doc.toString() !== expected) return
       this.session = createEditorSession(expected)
-      this.decorations = decorations(this.session, view.state.selection.ranges)
+      this.decorations = decorations(this.session, view.state.selection.ranges, this.resolveImage)
       // A no-op transaction asks CodeMirror to sample the updated provider.
       view.dispatch({})
     }, delay)
@@ -312,6 +326,8 @@ class LivePreviewState {
 }
 
 /** Live Preview that keeps Carve source authoritative and reveals syntax at the cursor. */
-export const carveLivePreview: Extension = ViewPlugin.fromClass(LivePreviewState, {
-  decorations: (value) => value.decorations,
-})
+export function createCarveLivePreview(resolveImage?: ImageResolver): Extension {
+  return ViewPlugin.define((view) => new LivePreviewState(view, resolveImage), { decorations: (value) => value.decorations })
+}
+
+export const carveLivePreview: Extension = createCarveLivePreview()

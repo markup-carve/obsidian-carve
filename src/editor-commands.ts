@@ -44,23 +44,6 @@ export function simpleTableEdit(source: string, at: number, direction: TableDire
   const line = source.slice(lineStart, lineEnd).replace(/\r$/, '')
   if (!/^\|[^\r\n]*\|$/.test(line) || /\\\|/.test(line)) return null
   const cells = line.slice(1, -1).split('|')
-  if (direction === 'delete-row') {
-    let from = lineStart
-    let to = lineEnd
-    if (to < source.length) to += 1
-    else if (from > 0) from -= 1
-    const remaining = source.slice(0, from) + source.slice(to)
-    const otherRows = remaining.split(/\r?\n/).filter((candidate) => /^\|[^\r\n]*\|$/.test(candidate))
-    if (otherRows.length === 0) return null
-    return { changes: [{ from, to, insert: '' }], anchor: from, head: from }
-  }
-  if (direction.startsWith('row-')) {
-    const row = `|${cells.map(() => '  ').join('|')}|`
-    const before = direction === 'row-before'
-    const from = before ? lineStart : lineEnd
-    const insert = before ? `${row}\n` : `\n${row}`
-    return { changes: [{ from, to: from, insert }], anchor: from + (before ? 2 : 3), head: from + (before ? 2 : 3) }
-  }
   let blockStart = lineStart
   while (blockStart > 0) {
     const previousEnd = blockStart - 1
@@ -78,6 +61,21 @@ export function simpleTableEdit(source: string, at: number, direction: TableDire
     if (!/^\|[^\r\n]*\|$/.test(next) || /\\\|/.test(next)) break
     blockEnd = nextEnd
   }
+  if (direction === 'delete-row') {
+    if (source.slice(blockStart, blockEnd).split('\n').length <= 1) return null
+    let from = lineStart
+    let to = lineEnd
+    if (to < source.length) to += 1
+    else if (from > 0) from -= 1
+    return { changes: [{ from, to, insert: '' }], anchor: from, head: from }
+  }
+  if (direction.startsWith('row-')) {
+    const row = `|${cells.map(() => '  ').join('|')}|`
+    const before = direction === 'row-before'
+    const from = before ? lineStart : lineEnd
+    const insert = before ? `${row}\n` : `\n${row}`
+    return { changes: [{ from, to: from, insert }], anchor: from + (before ? 2 : 3), head: from + (before ? 2 : 3) }
+  }
   const relative = Math.max(1, Math.min(line.length - 1, at - lineStart))
   const cellIndex = line.slice(1, relative).split('|').length - 1 + (direction === 'column-after' ? 1 : 0)
   const block = source.slice(blockStart, blockEnd)
@@ -93,11 +91,11 @@ export function simpleTableEdit(source: string, at: number, direction: TableDire
   return { changes: [{ from: blockStart, to: blockEnd, insert: replacement }], anchor: at, head: at }
 }
 
-export type LinePrefix = 'bullet' | 'task' | 'quote'
+export type LinePrefix = 'bullet' | 'ordered' | 'task' | 'quote'
 export function linePrefixEdit(source: string, lineFrom: number, lineTo: number, kind: LinePrefix): FormatEdit {
   const line = source.slice(lineFrom, lineTo)
-  const prefixes: Record<LinePrefix, RegExp> = { bullet: /^[-+*][ \t]+/, task: /^[-+*][ \t]+\[[ xX-]\][ \t]+/, quote: /^>[ \t]+/ }
-  const insertions: Record<LinePrefix, string> = { bullet: '- ', task: '- [ ] ', quote: '> ' }
+  const prefixes: Record<LinePrefix, RegExp> = { bullet: /^[-+*][ \t]+/, ordered: /^\d+[.)][ \t]+/, task: /^[-+*][ \t]+\[[ xX-]\][ \t]+/, quote: /^>[ \t]+/ }
+  const insertions: Record<LinePrefix, string> = { bullet: '- ', ordered: '1. ', task: '- [ ] ', quote: '> ' }
   const own = prefixes[kind].exec(line)?.[0] ?? ''
   const any = /^(?:[-+*][ \t]+(?:\[[ xX-]\][ \t]+)?|>[ \t]+)/.exec(line)?.[0] ?? ''
   const insert = own ? '' : insertions[kind]
@@ -163,6 +161,22 @@ export const wrapCodeBlock: Command = (view): boolean => {
 export const insertHorizontalRule: Command = (view): boolean => {
   const line = view.state.doc.lineAt(view.state.selection.main.head)
   view.dispatch({ changes: { from: line.from, to: line.to, insert: '***' }, scrollIntoView: true })
+  return true
+}
+
+export const insertSimpleTable: Command = (view): boolean => {
+  const selection = view.state.selection.main
+  const table = '| Header | Header |\n|  |  |'
+  view.dispatch({ changes: { from: selection.from, to: selection.to, insert: table }, selection: EditorSelection.cursor(selection.from + 2), scrollIntoView: true })
+  return true
+}
+
+export const wrapCallout: Command = (view): boolean => {
+  const selection = view.state.selection.main
+  const selected = view.state.sliceDoc(selection.from, selection.to)
+  const open = '::: note "Note"\n'
+  const close = `${selected.endsWith('\n') ? '' : '\n'}:::`
+  view.dispatch({ changes: [{ from: selection.from, insert: open }, { from: selection.to, insert: close }], selection: EditorSelection.single(selection.from + open.length, selection.to + open.length), scrollIntoView: true })
   return true
 }
 

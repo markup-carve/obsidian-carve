@@ -133,6 +133,14 @@
   padding: 0 0.3em;
   user-select: none;
 }
+.carve-editor .carve-live-image-preview {
+  display: inline-block;
+  max-width: min(100%, 32rem);
+  max-height: 20rem;
+  object-fit: contain;
+  vertical-align: middle;
+  border-radius: 4px;
+}
 .carve-source-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -141,4 +149,7 @@
   border-bottom: 1px solid var(--background-modifier-border);
 }
 .carve-source-toolbar button { min-width: 2rem; }
+.carve-source-status { min-height: 1.25rem; padding: 0 .5rem; color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.carve-source-status:empty { display: none; }
+.carve-source-status.is-warning { color: var(--text-warning); }
 .carve-source-editor { min-height: 0; flex: 1; overflow: auto; }

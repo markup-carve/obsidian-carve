@@ -3,6 +3,8 @@
 - Add source-native formatting toolbar and keyboard commands for strong, emphasis, strikethrough, inline code, links, paragraphs, and H1-H3. Commands edit only delimiter/line-prefix ranges and remain in CodeMirror undo history.
 - Add source-native row-before/after and column-before/after commands for simple pipe tables; ambiguous escaped/ragged grids are conservatively refused.
 - Add protected row/column deletion plus bullet, task, quote, fenced-code, and horizontal-rule source commands.
+- Render actual lazy image previews for resolved local/remote image destinations and wiki embeds; unresolved destinations retain an accessible badge.
+- Add all heading levels, highlight, numbered lists, table creation, callout insertion, visible command refusal, and lossless visual row/column movement.
 
 - Extend source Live Preview to list/task markers, links, simple table cells, fenced code blocks, and attached attribute badges.
 - Keep typing responsive by mapping existing decorations through transactions and rebuilding semantic presentation after 120 ms idle; documents above 250,000 UTF-16 units retain normal source highlighting without a blocking full parse.

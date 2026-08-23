@@ -11,7 +11,7 @@ Object.assign(globalThis, {
   HTMLTableElement: window.HTMLTableElement,
 })
 
-const { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, parseTableSize, setTableCaption, toggleTableHeader } = await import('../dist-test/visual-table.js')
+const { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, setTableCaption, toggleTableHeader } = await import('../dist-test/visual-table.js')
 
 test('parses and bounds requested table dimensions', () => {
   assert.deepEqual(parseTableSize('3 × 4'), [3, 4])
@@ -52,6 +52,19 @@ test('inserts and deletes columns across both table axes', () => {
   assert.deepEqual(Array.from(table.rows, (row) => row.cells.length), [3, 3, 3])
   assert.equal(deleteTableColumn(table.rows[1].cells[1]), true)
   assert.deepEqual(Array.from(table.rows, (row) => row.cells.length), [2, 2, 2])
+})
+
+test('moves rows and columns in both directions without rewriting cells', () => {
+  const table = createTable(3, 3)
+  table.rows[1].cells[0].textContent = 'first'
+  table.rows[2].cells[0].textContent = 'second'
+  assert.equal(moveTableRow(table.rows[2].cells[0], 'before')?.textContent, 'second')
+  assert.deepEqual(Array.from(table.rows, (row) => row.cells[0].textContent).slice(1), ['second', 'first'])
+  table.rows[1].cells[1].textContent = 'middle'
+  assert.equal(moveTableColumn(table.rows[1].cells[1], 'before')?.textContent, 'middle')
+  assert.equal(table.rows[1].cells[0].textContent, 'middle')
+  assert.equal(moveTableColumn(table.rows[1].cells[0], 'after')?.textContent, 'middle')
+  assert.equal(table.rows[1].cells[1].textContent, 'middle')
 })
 
 test('never deletes the final row or final column', () => {

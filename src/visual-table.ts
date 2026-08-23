@@ -74,6 +74,29 @@ export function deleteTableColumn(cell: HTMLTableCellElement): boolean {
   return true
 }
 
+export function moveTableRow(cell: HTMLTableCellElement, direction: TableDirection): HTMLTableCellElement | null {
+  const row = cell.parentElement as HTMLTableRowElement | null
+  if (!row) return null
+  const sibling = direction === 'before' ? row.previousElementSibling : row.nextElementSibling
+  if (!(sibling instanceof HTMLTableRowElement)) return cell
+  if (direction === 'before') sibling.before(row); else sibling.after(row)
+  return row.cells[cell.cellIndex] ?? null
+}
+
+export function moveTableColumn(cell: HTMLTableCellElement, direction: TableDirection): HTMLTableCellElement | null {
+  const table = cell.closest('table')
+  if (!table || !isSimpleTable(table)) return null
+  const from = cell.cellIndex
+  const to = from + (direction === 'before' ? -1 : 1)
+  if (to < 0 || to >= (table.rows[0]?.cells.length ?? 0)) return cell
+  for (const row of Array.from(table.rows)) {
+    const moving = row.cells[from]
+    const target = row.cells[to]
+    if (moving && target) direction === 'before' ? target.before(moving) : target.after(moving)
+  }
+  return table.rows[(cell.parentElement as HTMLTableRowElement).rowIndex]?.cells[to] ?? null
+}
+
 export function toggleTableHeader(cell: HTMLTableCellElement): HTMLTableCellElement {
   const replacement = document.createElement(cell.tagName === 'TH' ? 'td' : 'th') as HTMLTableCellElement
   for (const attribute of Array.from(cell.attributes)) replacement.setAttribute(attribute.name, attribute.value)

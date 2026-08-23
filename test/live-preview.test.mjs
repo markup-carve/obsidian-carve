@@ -87,9 +87,9 @@ test('semantic reparsing is debounced and bounded for responsive typing', () => 
 test('images and captions become readable widgets without losing source', () => {
   const source = '![alt](image.png)\n^ Caption'
   const shown = livePresentations(source, [{ from: source.length, to: source.length }])
-  assert.ok(shown.some((item) => item.kind === 'widget' && item.label === '🖼 alt'))
+  assert.ok(shown.some((item) => item.kind === 'image' && item.destination === 'image.png' && item.alt === 'alt'))
   assert.ok(shown.some((item) => item.kind === 'mark' && item.className === 'carve-live-caption' && source.slice(item.from, item.to) === 'Caption'))
-  assert.deepEqual(livePresentations(source, [{ from: 5, to: 5 }]).filter((item) => item.kind === 'widget' && item.className === 'carve-live-image'), [])
+  assert.deepEqual(livePresentations(source, [{ from: 5, to: 5 }]).filter((item) => item.kind === 'image'), [])
 })
 
 test('footnote references and definitions get distinct source-backed widgets', () => {
@@ -153,7 +153,7 @@ test('Obsidian wikilinks and embeds become source-backed widgets', () => {
   const shown = livePresentations(source, [{ from: source.length, to: source.length }])
   assert.deepEqual(shown.filter((item) => item.kind === 'widget').map((item) => [item.className, item.label]), [
     ['carve-live-wikilink', '↗ human label'],
-    ['carve-live-wiki-embed', '🖼 Picture'],
   ])
+  assert.ok(shown.some((item) => item.kind === 'image' && item.destination === 'Picture'))
   assert.equal(livePresentations(source, [{ from: 8, to: 8 }]).some((item) => item.kind === 'widget' && item.className === 'carve-live-wikilink'), false)
 })

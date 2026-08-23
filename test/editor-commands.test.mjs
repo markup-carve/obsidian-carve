@@ -54,6 +54,7 @@ test('table deletion protects the final row and column', () => {
   assert.equal(apply(source, simpleTableEdit(source, 16, 'delete-column').changes), '| A |\n| x |')
   assert.equal(simpleTableEdit('| only |', 3, 'delete-row'), null)
   assert.equal(simpleTableEdit('| only |', 3, 'delete-column'), null)
+  assert.equal(simpleTableEdit('| only |\n\n| unrelated |', 3, 'delete-row'), null)
 })
 
 test('line prefixes toggle without changing line content', () => {
@@ -61,6 +62,8 @@ test('line prefixes toggle without changing line content', () => {
   assert.equal(apply('- human', linePrefixEdit('- human', 0, 7, 'bullet').changes), 'human')
   assert.equal(apply('- human', linePrefixEdit('- human', 0, 7, 'task').changes), '- [ ] human')
   assert.equal(apply('human', linePrefixEdit('human', 0, 5, 'quote').changes), '> human')
+  assert.equal(apply('human', linePrefixEdit('human', 0, 5, 'ordered').changes), '1. human')
+  assert.equal(apply('1. human', linePrefixEdit('1. human', 0, 8, 'ordered').changes), 'human')
 })
 
 test('code fences wrap only the selected source', () => {
