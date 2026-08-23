@@ -210,6 +210,22 @@ export function livePresentations(
       presentations.push({ kind: 'hide', from: node.end - 2, to: node.end })
       continue
     }
+    if ((node.type === 'tag' && authored.startsWith('#')) || (node.type === 'mention' && authored.startsWith('@'))) {
+      presentations.push({ kind: 'hide', from: node.start, to: node.start + 1 })
+      presentations.push({ kind: 'mark', from: node.start + 1, to: node.end, className: node.type === 'tag' ? 'carve-live-tag' : 'carve-live-mention' })
+      continue
+    }
+    if (node.type === 'raw_inline') {
+      const raw = /^`([\s\S]*)`\{=([^}]+)\}$/.exec(authored)
+      if (!raw) continue
+      const contentStart = node.start + 1
+      const contentEnd = contentStart + raw[1]!.length
+      presentations.push({ kind: 'widget', at: node.start, label: raw[2]!, className: 'carve-live-raw-format' })
+      presentations.push({ kind: 'hide', from: node.start, to: contentStart })
+      presentations.push({ kind: 'mark', from: contentStart, to: contentEnd, className: 'carve-live-raw' })
+      presentations.push({ kind: 'hide', from: contentEnd, to: node.end })
+      continue
+    }
     const classes: Record<string, string> = {
       emphasis: 'carve-live-emphasis', strong: 'carve-live-strong',
       strikethrough: 'carve-live-strikethrough', code: 'carve-live-code',

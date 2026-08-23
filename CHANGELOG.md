@@ -4,6 +4,7 @@
 - Keep typing responsive by mapping existing decorations through transactions and rebuilding semantic presentation after 120 ms idle; documents above 250,000 UTF-16 units retain normal source highlighting without a blocking full parse.
 - Add source-authoritative presentations for images, footnote references and definitions, fenced containers, figure captions, and inline/block math.
 - Present authored comments and CriticMarkup insertions, deletions, substitutions, and comments with semantic styling and cursor reveal.
+- Present mapped tags, mentions, and raw-inline payloads without hiding their source while active.
 
 - Add source-authoritative Live Preview for headings and inline emphasis, backed by carve-js editor snapshots. Syntax markers hide away from the cursor and reveal for editing.
 

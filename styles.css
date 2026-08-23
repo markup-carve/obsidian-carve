@@ -115,3 +115,13 @@
 .carve-editor .carve-live-comment { color: var(--text-faint); font-style: italic; }
 .carve-editor .carve-live-insert { color: var(--color-green); text-decoration: underline; }
 .carve-editor .carve-live-delete { color: var(--color-red); text-decoration: line-through; }
+.carve-editor .carve-live-tag,
+.carve-editor .carve-live-mention { color: var(--text-accent); font-weight: 600; }
+.carve-editor .carve-live-raw { font-family: var(--font-monospace); color: var(--text-muted); }
+.carve-editor .carve-live-raw-format {
+  color: var(--text-faint);
+  font-size: 0.7em;
+  margin-right: 0.25em;
+  text-transform: uppercase;
+  user-select: none;
+}

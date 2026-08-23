@@ -136,3 +136,14 @@ test('CriticMarkup distinguishes inserts, deletes, substitutions, and comments',
     ['carve-live-comment', 'comment'],
   ])
 })
+
+test('tags, mentions, and raw inline payloads receive semantic presentation', () => {
+  const source = '#tag @user `<b>x</b>`{=html}'
+  const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+  assert.deepEqual(shown.filter((item) => item.kind === 'mark').map((item) => [item.className, source.slice(item.from, item.to)]), [
+    ['carve-live-tag', 'tag'],
+    ['carve-live-mention', 'user'],
+    ['carve-live-raw', '<b>x</b>'],
+  ])
+  assert.ok(shown.some((item) => item.kind === 'widget' && item.label === 'html'))
+})
