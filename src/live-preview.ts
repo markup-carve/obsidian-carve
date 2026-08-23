@@ -47,6 +47,13 @@ export function livePresentations(
   for (const node of nodes) {
     if (!node.type || active(node, selections)) continue
     const authored = source.slice(node.start, node.end)
+    for (const token of node.tokens) {
+      if (token.role !== 'attribute' || active(token, selections)) continue
+      const label = source.slice(token.start + 1, token.end - 1)
+      presentations.push({ kind: 'line', at: token.start, className: 'carve-live-attribute-line' })
+      presentations.push({ kind: 'widget', at: token.start, label, className: 'carve-live-attribute' })
+      presentations.push({ kind: 'hide', from: token.start, to: token.end })
+    }
     if (node.type === 'heading') {
       const marker = /^(#{1,6})[ \t]+/.exec(authored)
       if (marker) {

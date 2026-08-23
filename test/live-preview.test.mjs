@@ -67,3 +67,13 @@ test('fenced code hides fences but reveals them while editing the block', () => 
   ])
   assert.deepEqual(livePresentations(source, [{ from: 8, to: 8 }]), [])
 })
+
+test('attached attributes become a readable badge and reveal at the cursor', () => {
+  const source = '{#hero .wide}\n### Head'
+  const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+  assert.deepEqual(shown.filter((item) => item.kind === 'widget' || (item.kind === 'hide' && item.from === 0)), [
+    { kind: 'widget', at: 0, label: '#hero .wide', className: 'carve-live-attribute' },
+    { kind: 'hide', from: 0, to: 13 },
+  ])
+  assert.equal(livePresentations(source, [{ from: 5, to: 5 }]).some((item) => item.kind === 'hide' && item.from === 0 && item.to === 13), false)
+})

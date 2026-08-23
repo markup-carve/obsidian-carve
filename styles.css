@@ -73,6 +73,17 @@
   user-select: none;
 }
 .carve-editor .carve-live-link { color: var(--link-color); text-decoration: underline; }
+.carve-editor .carve-live-attribute {
+  display: inline-block;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  padding: 0 0.5em;
+  font-size: 0.85em;
+  user-select: none;
+}
+.carve-editor .carve-live-attribute-line { opacity: 0.9; }
 .carve-editor .carve-live-table-row { border-bottom: 1px solid var(--background-modifier-border); }
 .carve-editor .carve-live-table-cell,
 .carve-editor .carve-live-table-header { display: inline-block; min-width: 7em; padding: 0.15em 0.5em; }
