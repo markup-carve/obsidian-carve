@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      # An Obsidian plugin tag is the bare manifest version with NO `v` prefix.
+      # The v-prefixed shape is matched too, and rejected by the guard below
+      # with an explanation: a tag GitHub never matches would run nothing at
+      # all, and "nothing happened" is the hardest release failure to read.
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+jobs:
+  release:
+    name: Build and attach the plugin assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # uploads assets onto the release for this tag
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cheapest check first: a mismatched tag is rejected before the install.
+      - name: Verify the tag agrees with the manifest
+        run: scripts/check-release-tag.sh "$GITHUB_REF_NAME"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # package-lock.json resolves the carve engine as git+ssh, and npm only
+      # reaches it on a runner because it falls back to HTTPS on its own. CI
+      # installs fine without this, but a release must not rest on that
+      # fallback. Both lines write the SAME config key, so both need --add:
+      # a plain set would replace the first rewrite with the second and leave
+      # the ssh:// form uncovered.
+      - name: Prefer HTTPS for Git dependencies
+        run: |
+          git config --global --add url."https://github.com/".insteadOf ssh://git@github.com/
+          git config --global --add url."https://github.com/".insteadOf git@github.com:
+          git config --global --get-all url."https://github.com/".insteadOf
+
+      - run: npm ci
+
+      # The same gate CI runs: tests, typecheck, and the production build that
+      # writes main.js. A release is not the place to find out the bundle does
+      # not compile.
+      - run: npm run test:all
+
+      # main.js is a build artifact and is not in the repo tree, so this is
+      # what stands between a green workflow and a release carrying two of the
+      # three files a user needs.
+      - name: Verify the three release assets exist
+        run: scripts/check-release-assets.sh
+
+      # The release for this tag usually already exists as a draft holding the
+      # notes, so `gh release create` would fail on it. Upload onto whatever is
+      # there and create one only when there is nothing. Either way the release
+      # is left in the state the maintainer put it in: this never flips a draft
+      # to published, so publishing stays a human action.
+      - name: Attach main.js, manifest.json, and styles.css
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists; uploading assets onto it."
+          else
+            echo "No release for $TAG yet; creating a draft to hold the assets."
+            gh release create "$TAG" --draft --title "$TAG" --notes "Release $TAG"
+          fi
+          gh release upload "$TAG" main.js manifest.json styles.css --clobber
+
+      # Ask GitHub what the release carries rather than trusting the upload's
+      # exit code. A partial upload leaves a release that installs nothing.
+      - name: The release actually carries all three assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          names="$(gh release view "$TAG" --json assets --jq '.assets[].name' | sort | tr '\n' ' ')"
+          echo "Assets on $TAG: $names"
+          missing=0
+          for asset in main.js manifest.json styles.css; do
+            case " $names " in
+              *" $asset "*) ;;
+              *) echo "::error::$asset is not attached to release $TAG."; missing=1 ;;
+            esac
+          done
+          exit $missing
