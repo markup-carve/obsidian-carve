@@ -61,11 +61,15 @@ Ctrl/Cmd+Shift+7/8; and typing `--- ` or `` ``` `` followed by a space creates
 the rendered horizontal rule or code block immediately. Math, Mermaid diagrams,
 callouts, and footnotes have direct insertion buttons and open as rendered,
 lossless constructs rather than exposed delimiter text.
+Ctrl/Cmd+Enter provides the same task creation/toggle workflow in Source and
+Live split modes, so switching to a lossless source surface does not sacrifice
+the high-frequency keyboard action.
 
 When a table cell is active, four compact insertion controls appear beside it
 for rows and columns in either direction. Shift-click selects a rectangular cell
 range, **Clear cells** applies to the complete selection, Ctrl/Cmd+Arrow moves
-between cells, Tab appends from the final cell, and structural actions remain in
+between cells, **Copy cells** exports the selection as spreadsheet-ready TSV,
+Tab appends from the final cell, and structural actions remain in
 the same selection-restoring document history. These operations do not require
 editing pipe syntax or maintaining column delimiters manually.
 

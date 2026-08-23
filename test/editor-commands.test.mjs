@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fencedBlockEdit, headingEdit, inlineFormatEdit, linePrefixEdit, linkFormatEdit, listContinuationEdit, listIndentEdit, simpleTableEdit } from '../dist-test/editor-commands.js'
+import { fencedBlockEdit, headingEdit, inlineFormatEdit, linePrefixEdit, linkFormatEdit, listContinuationEdit, listIndentEdit, simpleTableEdit, taskToggleEdit } from '../dist-test/editor-commands.js'
 
 function apply(source, changes) {
   for (const change of [...changes].reverse()) source = source.slice(0, change.from) + change.insert + source.slice(change.to)
@@ -83,4 +83,11 @@ test('source Enter continues bullets, numbering, and task state', () => {
   assert.equal(apply('9. item', listContinuationEdit('9. item', 0, 7, 7).changes), '9. item\n10. ')
   assert.equal(apply('- [x] done', listContinuationEdit('- [x] done', 0, 10, 10).changes), '- [x] done\n- [ ] ')
   assert.equal(apply('- ', listContinuationEdit('- ', 0, 2, 2).changes), '')
+})
+
+test('source task shortcut creates and toggles tasks without rewriting content', () => {
+  assert.equal(apply('do it', taskToggleEdit('do it', 0, 5).changes), '- [ ] do it')
+  assert.equal(apply('- item', taskToggleEdit('- item', 0, 6).changes), '- [ ] item')
+  assert.equal(apply('- [ ] item', taskToggleEdit('- [ ] item', 0, 10).changes), '- [x] item')
+  assert.equal(apply('- [x] item', taskToggleEdit('- [x] item', 0, 10).changes), '- [ ] item')
 })
