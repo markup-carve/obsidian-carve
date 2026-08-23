@@ -7,6 +7,7 @@ import { extractMetadata, withCrvExtension, type CarveMetadata } from './metadat
 import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { carveLivePreview } from './live-preview'
+import { carveEditorCommands, createLink, setHeading, toggleCode, toggleEmphasis, toggleStrike, toggleStrong } from './editor-commands'
 import { sourceToVisualDocument, visualHtmlToSource } from './wysiwyg'
 import { addTableColumn, addTableRow, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, parseTableSize, selectionCell, setTableCaption, toggleTableHeader } from './visual-table'
 
@@ -60,11 +61,13 @@ export class CarveView extends TextFileView {
   }
 
   private createEditor(parent: HTMLElement, livePreview?: HTMLElement): void {
+    const toolbar = parent.createDiv({ cls: 'carve-source-toolbar', attr: { role: 'toolbar', 'aria-label': 'Source formatting' } })
+    const host = parent.createDiv({ cls: 'carve-source-editor' })
     this.editor = new EditorView({
-      parent,
+      parent: host,
       state: EditorState.create({
         doc: this.source,
-        extensions: [basicSetup, carveLanguage, carveHighlighting, carveLivePreview, EditorView.lineWrapping,
+        extensions: [basicSetup, carveLanguage, carveHighlighting, carveLivePreview, carveEditorCommands, EditorView.lineWrapping,
           EditorView.contentAttributes.of({ 'aria-label': 'Carve source' }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return
@@ -75,6 +78,19 @@ export class CarveView extends TextFileView {
           })],
       }),
     })
+    const action = (label: string, title: string, command: (view: EditorView) => boolean): void => {
+      const button = toolbar.createEl('button', { text: label, attr: { type: 'button', title, 'aria-label': title } })
+      button.addEventListener('mousedown', (event) => { event.preventDefault(); if (this.editor) command(this.editor); this.editor?.focus() })
+    }
+    action('B', 'Strong (Ctrl/Cmd+B)', toggleStrong)
+    action('I', 'Emphasis (Ctrl/Cmd+I)', toggleEmphasis)
+    action('S', 'Strikethrough', toggleStrike)
+    action('`c`', 'Inline code', toggleCode)
+    action('Link', 'Create link (Ctrl/Cmd+K)', createLink)
+    action('P', 'Paragraph', (view) => setHeading(view, 0))
+    action('H1', 'Heading 1', (view) => setHeading(view, 1))
+    action('H2', 'Heading 2', (view) => setHeading(view, 2))
+    action('H3', 'Heading 3', (view) => setHeading(view, 3))
   }
 
   private async draw(): Promise<void> {

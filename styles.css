@@ -125,3 +125,20 @@
   text-transform: uppercase;
   user-select: none;
 }
+.carve-editor .carve-live-wikilink,
+.carve-editor .carve-live-wiki-embed {
+  color: var(--link-color);
+  background: var(--background-secondary);
+  border-radius: 4px;
+  padding: 0 0.3em;
+  user-select: none;
+}
+.carve-source-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.carve-source-toolbar button { min-width: 2rem; }
+.carve-source-editor { min-height: 0; flex: 1; overflow: auto; }

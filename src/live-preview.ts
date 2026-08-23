@@ -51,7 +51,7 @@ export function livePresentations(
     return textByAncestor.get(node.path) ?? null
   }
   for (const node of nodes) {
-    if (!node.type || active(node, selections)) continue
+    if (!node.type || (node.type !== 'text' && active(node, selections))) continue
     const authored = source.slice(node.start, node.end)
     for (const token of node.tokens) {
       if (token.role !== 'attribute' || active(token, selections)) continue
@@ -59,6 +59,18 @@ export function livePresentations(
       presentations.push({ kind: 'line', at: token.start, className: 'carve-live-attribute-line' })
       presentations.push({ kind: 'widget', at: token.start, label, className: 'carve-live-attribute' })
       presentations.push({ kind: 'hide', from: token.start, to: token.end })
+    }
+    if (node.type === 'text') {
+      const wikilink = /(!?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g
+      for (const match of authored.matchAll(wikilink)) {
+        const start = node.start + match.index!
+        const end = start + match[0].length
+        if (active({ start, end }, selections)) continue
+        const embed = match[1] === '!'
+        presentations.push({ kind: 'widget', at: start, label: `${embed ? '🖼' : '↗'} ${match[3] ?? match[2]}`, className: embed ? 'carve-live-wiki-embed' : 'carve-live-wikilink' })
+        presentations.push({ kind: 'hide', from: start, to: end })
+      }
+      continue
     }
     if (node.type === 'heading') {
       const marker = /^(#{1,6})[ \t]+/.exec(authored)

@@ -147,3 +147,13 @@ test('tags, mentions, and raw inline payloads receive semantic presentation', ()
   ])
   assert.ok(shown.some((item) => item.kind === 'widget' && item.label === 'html'))
 })
+
+test('Obsidian wikilinks and embeds become source-backed widgets', () => {
+  const source = 'See [[Note|human label]] and ![[Picture]].'
+  const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+  assert.deepEqual(shown.filter((item) => item.kind === 'widget').map((item) => [item.className, item.label]), [
+    ['carve-live-wikilink', '↗ human label'],
+    ['carve-live-wiki-embed', '🖼 Picture'],
+  ])
+  assert.equal(livePresentations(source, [{ from: 8, to: 8 }]).some((item) => item.kind === 'widget' && item.className === 'carve-live-wikilink'), false)
+})
