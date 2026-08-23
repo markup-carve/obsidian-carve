@@ -59,6 +59,13 @@ transformations rather than deprecated `execCommand` behavior. The editor owns
 its undo/redo snapshots, including toolbar actions and Markdown-style input
 rules.
 
+List keyboard behavior is consistent across modes. In Visual mode, Tab and
+Shift+Tab nest or unnest the active item, Enter creates the next item (including
+an unchecked task box), and Enter on an empty item exits or outdents the list.
+Source and Live split apply the equivalent operations to authored indentation
+and continue bullet, numbered, and task markers; selected source rows indent as
+a group.
+
 Source mode exposes the same common writing operations without leaving the
 lossless editor: all six heading levels; strong, emphasis, strike, highlight,
 inline and fenced code; links; bullet, numbered, and task lists; quotes;

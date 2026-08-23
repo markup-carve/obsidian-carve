@@ -3,8 +3,9 @@ import test from 'node:test'
 import { Window } from 'happy-dom'
 
 const window = new Window()
-Object.assign(globalThis, { document: window.document, Element: window.Element })
-const { applyVisualInputRule, formatVisualBlock, insertPlainText, toggleVisualList, wrapVisualSelection } = await import('../dist-test/visual-editing.js')
+Object.assign(globalThis, { document: window.document, Element: window.Element, HTMLLIElement: window.HTMLLIElement, HTMLInputElement: window.HTMLInputElement })
+const { applyVisualInputRule, continueVisualList, formatVisualBlock, indentVisualListItem, insertPlainText, toggleVisualList, wrapVisualSelection } = await import('../dist-test/visual-editing.js')
+const { visualHtmlToSource } = await import('../dist-test/wysiwyg.js')
 
 function selectTextNode(element, offset) {
   const range = document.createRange(); range.setStart(element.firstChild, offset); range.collapse(true)
@@ -54,3 +55,29 @@ test('structured formatting uses Range and DOM operations', () => {
   assert.equal(toggleVisualList(surface, false, document.getSelection()), true)
   assert.equal(surface.innerHTML, '<ul><li><strong>human</strong> text</li></ul>')
 })
+
+test('Tab and Shift+Tab nest and unnest visual list items', () => {
+  const surface = document.createElement('article'); surface.innerHTML = '<ul><li>one</li><li>two</li></ul>'; document.body.append(surface)
+  const second = surface.querySelectorAll('li')[1]
+  const selection = selectTextNode(second, 1)
+  assert.equal(indentVisualListItem(surface, false, selection), true)
+  assert.equal(surface.innerHTML, '<ul><li>one<ul><li>two</li></ul></li></ul>')
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- one\n  - two\n')
+  assert.equal(indentVisualListItem(surface, true, document.getSelection()), true)
+  assert.equal(surface.innerHTML, '<ul><li>one</li><li>two</li></ul>')
+})
+
+test('Enter continues normal and task lists and exits an empty list item', () => {
+  const surface = document.createElement('article'); surface.innerHTML = '<ul><li><input type="checkbox" disabled> task</li></ul>'; document.body.append(surface)
+  placeSelection(surface.querySelector('li'))
+  assert.equal(continueVisualList(surface), true)
+  assert.match(surface.innerHTML, /<li><input type="checkbox" disabled=""> <br><\/li>/)
+  const empty = surface.querySelectorAll('li')[1]; placeSelection(empty)
+  assert.equal(continueVisualList(surface), true)
+  assert.equal(surface.innerHTML, '<ul><li><input type="checkbox" disabled=""> task</li></ul><p><br></p>')
+})
+
+function placeSelection(element) {
+  const range = document.createRange(); range.selectNodeContents(element); range.collapse(true)
+  const selection = document.getSelection(); selection.removeAllRanges(); selection.addRange(range); return selection
+}

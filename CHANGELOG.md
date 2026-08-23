@@ -1,5 +1,6 @@
 # Changelog
 
+- Make Tab/Shift+Tab and Enter list-aware in Visual, Source, and Live split modes, including nesting, outdenting, numbered continuation, task continuation, multi-row indentation, and empty-item exit.
 - Make Visual mode the rich editing surface: Markdown-style block input rules, explicit Range/DOM formatting, editor-owned undo/redo, rendered protected constructs, and in-place Obsidian math/Mermaid rendering.
 - Simplify Live split to conventional highlighted source beside its rendered preview; semantic in-place decoration remains exclusive to standalone Source mode.
 - Keep advanced Carve constructs as visible, non-editable, byte-exact islands so surrounding content remains safely editable in Visual mode.

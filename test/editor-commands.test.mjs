@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { fencedBlockEdit, headingEdit, inlineFormatEdit, linePrefixEdit, linkFormatEdit, simpleTableEdit } from '../dist-test/editor-commands.js'
+import { fencedBlockEdit, headingEdit, inlineFormatEdit, linePrefixEdit, linkFormatEdit, listContinuationEdit, listIndentEdit, simpleTableEdit } from '../dist-test/editor-commands.js'
 
 function apply(source, changes) {
   for (const change of [...changes].reverse()) source = source.slice(0, change.from) + change.insert + source.slice(change.to)
@@ -70,4 +70,17 @@ test('code fences wrap only the selected source', () => {
   const source = 'before\ncode\nafter'
   const edit = fencedBlockEdit(source, 7, 11, 'js')
   assert.equal(apply(source, edit.changes), 'before\n```js\ncode\n```\nafter')
+})
+
+test('source list indentation follows Tab and Shift+Tab', () => {
+  assert.equal(apply('- nested', listIndentEdit('- nested', 0, 8).changes), '  - nested')
+  assert.equal(apply('  - nested', listIndentEdit('  - nested', 0, 10, true).changes), '- nested')
+  assert.equal(listIndentEdit('paragraph', 0, 9), null)
+})
+
+test('source Enter continues bullets, numbering, and task state', () => {
+  assert.equal(apply('- item', listContinuationEdit('- item', 0, 6, 6).changes), '- item\n- ')
+  assert.equal(apply('9. item', listContinuationEdit('9. item', 0, 7, 7).changes), '9. item\n10. ')
+  assert.equal(apply('- [x] done', listContinuationEdit('- [x] done', 0, 10, 10).changes), '- [x] done\n- [ ] ')
+  assert.equal(apply('- ', listContinuationEdit('- ', 0, 2, 2).changes), '')
 })
