@@ -65,3 +65,20 @@
   border-radius: 3px;
   padding: 0 0.15em;
 }
+.carve-editor .carve-live-list-marker,
+.carve-editor .carve-live-task-marker {
+  display: inline-block;
+  width: 1.6em;
+  color: var(--text-accent);
+  user-select: none;
+}
+.carve-editor .carve-live-link { color: var(--link-color); text-decoration: underline; }
+.carve-editor .carve-live-table-row { border-bottom: 1px solid var(--background-modifier-border); }
+.carve-editor .carve-live-table-cell,
+.carve-editor .carve-live-table-header { display: inline-block; min-width: 7em; padding: 0.15em 0.5em; }
+.carve-editor .carve-live-table-header { font-weight: 700; background: var(--background-secondary); }
+.carve-editor .carve-live-code-block,
+.carve-editor .carve-live-code-block-content {
+  font-family: var(--font-monospace);
+  background: var(--background-secondary);
+}

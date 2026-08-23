@@ -28,3 +28,42 @@ test('Unicode before markup still maps to CodeMirror UTF-16 offsets', () => {
     { kind: 'hide', from: 9, to: 10 },
   ])
 })
+
+test('list and task syntax becomes visible semantic markers', () => {
+  assert.deepEqual(livePresentations('- item', [{ from: 6, to: 6 }]).slice(1), [
+    { kind: 'widget', at: 0, label: '•', className: 'carve-live-list-marker' },
+    { kind: 'hide', from: 0, to: 2 },
+  ])
+  assert.deepEqual(livePresentations('- [x] done', [{ from: 10, to: 10 }]).slice(1), [
+    { kind: 'widget', at: 0, label: '☑', className: 'carve-live-task-marker' },
+    { kind: 'hide', from: 0, to: 6 },
+  ])
+})
+
+test('links show their label and reveal their destination at the cursor', () => {
+  const source = '[label](https://example.com)'
+  assert.deepEqual(livePresentations(source, [{ from: source.length, to: source.length }]), [
+    { kind: 'hide', from: 0, to: 1 },
+    { kind: 'mark', from: 1, to: 6, className: 'carve-live-link' },
+    { kind: 'hide', from: 6, to: 28 },
+  ])
+  assert.deepEqual(livePresentations(source, [{ from: 20, to: 20 }]), [])
+})
+
+test('table source becomes styled header and body cells', () => {
+  const shown = livePresentations('|= A |= B |\n| x | y |', [{ from: 21, to: 21 }])
+  assert.equal(shown.filter((item) => item.kind === 'line' && item.className === 'carve-live-table-row').length, 2)
+  assert.equal(shown.filter((item) => item.kind === 'mark' && item.className === 'carve-live-table-header').length, 2)
+  assert.equal(shown.filter((item) => item.kind === 'mark' && item.className === 'carve-live-table-cell').length, 2)
+})
+
+test('fenced code hides fences but reveals them while editing the block', () => {
+  const source = '```js\ncode\n```'
+  assert.deepEqual(livePresentations(source, [{ from: source.length, to: source.length }]), [
+    { kind: 'hide', from: 0, to: 6 },
+    { kind: 'line', at: 6, className: 'carve-live-code-block' },
+    { kind: 'mark', from: 6, to: 10, className: 'carve-live-code-block-content' },
+    { kind: 'hide', from: 10, to: 14 },
+  ])
+  assert.deepEqual(livePresentations(source, [{ from: 8, to: 8 }]), [])
+})

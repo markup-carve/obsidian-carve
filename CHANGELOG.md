@@ -1,5 +1,7 @@
 # Changelog
 
+- Extend source Live Preview to list/task markers, links, simple table cells, and fenced code blocks.
+
 - Add source-authoritative Live Preview for headings and inline emphasis, backed by carve-js editor snapshots. Syntax markers hide away from the cursor and reveal for editing.
 
 ## Unreleased
