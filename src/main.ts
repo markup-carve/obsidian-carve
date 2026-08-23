@@ -8,7 +8,7 @@ import { renderCarve } from './render'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
-import { sourceToVisualDocument, visualHtmlToSource } from './wysiwyg'
+import { sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from './wysiwyg'
 import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, toggleTableHeader } from './visual-table'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
@@ -155,7 +155,7 @@ export class CarveView extends TextFileView {
       unlock.addEventListener('click', () => { surface.contentEditable = 'true'; shell.removeClass('is-visual-locked'); unlock.remove(); status.setText('Lossy editing enabled for this session. Revert source remains available.'); surface.focus() })
     }
     const sync = (): void => {
-      const result = visualHtmlToSource(surface.innerHTML, visual.frontmatter)
+      const result = visualHtmlToSource(surface.innerHTML, visual.frontmatter, visual.opaque)
       this.source = result.source
       status.setText(result.diagnostics.length ? `Imported with ${result.diagnostics.length} conversion warning(s).` : 'Saved as Carve source.')
       status.toggleClass('is-warning', result.diagnostics.length > 0)
@@ -260,7 +260,20 @@ export class CarveView extends TextFileView {
     })
     surface.addEventListener('click', updateTableTools)
     surface.addEventListener('keyup', updateTableTools)
+    const editOpaque = (target: EventTarget | null): boolean => {
+      const island = target instanceof Element ? target.closest<HTMLElement>('.carve-visual-opaque') : null
+      const index = Number(island?.dataset.carveOpaque)
+      if (!island || !Number.isInteger(index) || !visual.opaque[index]) return false
+      const next = window.prompt('Edit exact Carve source for this protected construct', visual.opaque[index]!.source)
+      if (next === null) return true
+      const updated = updateOpaqueConstruct(visual.opaque, index, next)
+      if (updated) island.setText(updated.label)
+      status.setText('Protected construct updated byte-for-byte.'); status.removeClass('is-warning'); sync(); island.focus()
+      return true
+    }
+    surface.addEventListener('dblclick', (event) => { if (editOpaque(event.target)) event.preventDefault() })
     surface.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && editOpaque(event.target)) { event.preventDefault(); return }
       if (event.key !== 'Tab') return
       const cell = selectionCell(surface)
       if (!cell) return

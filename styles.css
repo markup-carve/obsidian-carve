@@ -153,3 +153,19 @@
 .carve-source-status:empty { display: none; }
 .carve-source-status.is-warning { color: var(--text-warning); }
 .carve-source-editor { min-height: 0; flex: 1; overflow: auto; }
+.carve-visual-opaque {
+  display: inline-block;
+  max-width: 100%;
+  padding: .1em .45em;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: .85em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: baseline;
+  cursor: default;
+}

@@ -3,7 +3,7 @@ import test from 'node:test'
 import { carveToHtml } from '@markup-carve/carve'
 import { extractMetadata, withCrvExtension } from '../dist-test/metadata.js'
 import { renderCarve, rewriteWikiSyntax } from '../dist-test/render.js'
-import { normalizeVisualHtml, sourceToVisualDocument, visualHtmlToSource } from '../dist-test/wysiwyg.js'
+import { normalizeVisualHtml, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from '../dist-test/wysiwyg.js'
 
 test('the renderer produces Obsidian-ready HTML', () => {
   const html = carveToHtml('# Human markup\n\nA *strong* idea and [link](https://example.com).', { allowRawHtml: false })
@@ -74,7 +74,7 @@ test('empty visual rows become ordinary source spacing, not hard breaks', () => 
   assert.equal(visualHtmlToSource('<p>a<br>b</p>').source, 'a\\\nb\n')
 })
 
-test('visual safety audit classifies the Carve element surface', () => {
+test('visual safety audit keeps the complete Carve element surface lossless', () => {
   const lossless = {
     paragraph: 'Plain text\n', heading: '# Heading\n', inline: '/italic/ *bold* _under_ ~strike~ =mark= `code`\n',
     scripts: '{^super^} {,sub,}\n', link: '[label](https://example.com)\n', image: '![alt](image.png)\n',
@@ -82,7 +82,7 @@ test('visual safety audit classifies the Carve element surface', () => {
     table: '|= A |= B |\n| x | y |\n', figure: '![alt](image.png)\n^ Caption\n', thematicBreak: '***\n',
     hardBreak: 'one\\\ntwo\n', codeBlock: '```js\nconst x = 1\n```\n', math: 'Inline $`x`\n', frontmatter: '---\ntitle: T\n---\n# H\n',
   }
-  const protectedFromLoss = {
+  const protectedIslands = {
     admonition: '::: note "Title"\nbody\n:::\n',
     div: '::: custom\nbody\n:::\n', lineBlock: '::: |\nline one\n line two\n:::\n',
     footnote: 'Text[^a]\n\n[^a]: note\n', inlineFootnote: 'Text^[note]\n', attributes: '{#id .wide}\n# Heading\n',
@@ -91,5 +91,32 @@ test('visual safety audit classifies the Carve element surface', () => {
     raw: '`<b>x</b>`{=html}\n', wikilink: '[[Note|label]]\n', embed: '![[Note]]\n', tagMention: '#tag @user\n',
   }
   for (const [name, source] of Object.entries(lossless)) assert.equal(sourceToVisualDocument(source).semanticLoss, false, name)
-  for (const [name, source] of Object.entries(protectedFromLoss)) assert.equal(sourceToVisualDocument(source).semanticLoss, true, name)
+  for (const [name, source] of Object.entries(protectedIslands)) {
+    const visual = sourceToVisualDocument(source)
+    assert.equal(visual.semanticLoss, false, name)
+    assert.ok(visual.opaque.length > 0, name)
+    assert.equal(visualHtmlToSource(visual.html, visual.frontmatter, visual.opaque).source, source, name)
+  }
+})
+
+test('visual edits around protected constructs preserve their exact authored bytes', () => {
+  const source = 'before {% hidden <value> %} after\n\n::: note "Title"\nbody\n:::\n'
+  const visual = sourceToVisualDocument(source)
+  assert.match(visual.html, /contenteditable="false"/)
+  assert.match(visual.html, /hidden &lt;value&gt;/)
+  const edited = visual.html.replace('before ', 'edited ').replace(' after', ' afterwards')
+  assert.equal(visualHtmlToSource(edited, visual.frontmatter, visual.opaque).source, 'edited {% hidden <value> %} afterwards\n\n::: note "Title"\nbody\n:::\n')
+})
+
+test('protected constructs can be explicitly edited without exposing their placeholder', () => {
+  const visual = sourceToVisualDocument('before {% old %} after\n')
+  const updated = updateOpaqueConstruct(visual.opaque, 0, '{% new exact comment %}')
+  assert.match(updated.label, /new exact comment/)
+  assert.equal(visualHtmlToSource(visual.html, visual.frontmatter, visual.opaque).source, 'before {% new exact comment %} after\n')
+})
+
+test('renderer-owned heading sections do not create visual import warnings', () => {
+  const visual = sourceToVisualDocument('# Heading\n\nParagraph.\n')
+  assert.deepEqual(visual.diagnostics, [])
+  assert.equal(visual.canonicalizes, false)
 })
