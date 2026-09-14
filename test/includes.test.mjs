@@ -252,3 +252,30 @@ test('an origin an included file wrote itself is replaced by its real one', asyn
   const result = await renderCarveWithIncludes('{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
   assert.equal(originOf(result.html, 'foo.crv'), 'sub/child.crv')
 })
+
+test('the first block of an included region carries the file it came from', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'Child para.\n' })
+  const result = await renderCarveWithIncludes('{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
+  assert.match(result.html, /<p data-carve-origin="sub\/child.crv">Child para.<\/p>/)
+})
+
+test('a block inside an included region is not stamped again', async () => {
+  const { gateway } = vault({ 'sub/child.crv': '- a\n- b\n' })
+  const result = await renderCarveWithIncludes('{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
+  // One attribute marks the region; repeating it on every node inside would
+  // bloat the document and tell the reader nothing new.
+  assert.equal(result.html.split(ORIGIN_ATTRIBUTE).length - 1, 1)
+})
+
+test('a block in the root document carries no origin', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'Child.\n' })
+  const result = await renderCarveWithIncludes('Root para.\n\n{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
+  assert.match(result.html, /<p>Root para.<\/p>/)
+})
+
+test('an origin a block in the root document wrote itself does not survive', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'Child.\n' })
+  const source = '{data-carve-origin="elsewhere.crv"}\nRoot para.\n\n{{ sub/child.crv }}\n'
+  const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway })
+  assert.doesNotMatch(result.html, /elsewhere.crv/)
+})

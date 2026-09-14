@@ -109,6 +109,15 @@ export function directoryOf(path: string): string { return path.includes('/') ? 
 const UNRESOLVED_MESSAGE = /^Include "(.+)" could not be resolved\.$/
 
 /**
+ * Wording shared with the navigation gesture, so a refusal explained above the
+ * document and one explained by a failed jump cannot drift apart.
+ */
+export function containmentMessage(path: string): string { return `Include "${path}" is outside the vault and was not read.` }
+
+/** The plugin's own wording for a target it could not open; see PART 9 section 19. */
+export function unresolvedMessage(path: string): string { return `Include "${path}" could not be resolved.` }
+
+/**
  * A directive path is only unique WITHIN the file that wrote it: `child.crv`
  * in `a/one.crv` and in `b/two.crv` name different files. Every per-directive
  * record is therefore keyed by the including file as well as the path.
@@ -127,7 +136,7 @@ export function classifyDiagnostics(warnings: readonly IncludeWarning[], denied:
   return warnings.map((warning) => {
     const path = warning.rule === 'include-unresolved' && warning.file !== undefined ? UNRESOLVED_MESSAGE.exec(warning.message)?.[1] : undefined
     const diagnostic: IncludeDiagnostic = path !== undefined && denied.has(directiveKey(warning.file as string, path))
-      ? { line: warning.line, column: warning.column, rule: 'include-containment', message: `Include "${path}" is outside the vault and was not read.` }
+      ? { line: warning.line, column: warning.column, rule: 'include-containment', message: containmentMessage(path) }
       : { line: warning.line, column: warning.column, rule: warning.rule, message: warning.message }
     if (warning.file !== undefined) diagnostic.file = warning.file
     return diagnostic
@@ -213,22 +222,34 @@ const REBASED_BY_REWRITE = ['carve-wikilink', 'carve-embed']
  * code spans and fences, which are text rather than links. Run it AFTER
  * `resolve()`, where a reference link finally carries its destination.
  */
-export function stampIncludeOrigins(node: unknown): void {
+export function stampIncludeOrigins(node: unknown, parentFile?: string): void {
   if (node === null || typeof node !== 'object') return
   const record = node as { type?: string; href?: string; pos?: { file?: string }; attrs?: { classes?: string[]; keyValues?: Record<string, string> } }
-  if (record.type === 'link') {
+  const file = record.pos?.file
+  if (typeof record.type === 'string') {
     // An authored attribute of this name never survives. The origin states
     // where the engine says the node came from; a document does not get to
     // assert it and redirect where a click lands.
     if (record.attrs?.keyValues) delete record.attrs.keyValues[ORIGIN_ATTRIBUTE]
-    const origin = record.pos?.file
     const rewritten = record.attrs?.classes?.some((name) => REBASED_BY_REWRITE.includes(name)) ?? false
-    if (origin !== undefined && !rewritten && typeof record.href === 'string' && isFolderRelativeDestination(record.href)) {
+    // A link carries the file its DESTINATION is relative to. Any other node
+    // carries it only where an included region begins - the block whose file
+    // differs from its parent's - so one attribute marks the region instead of
+    // one per node inside it.
+    //
+    // A directive expanded mid-sentence leaves no region to mark: the engine
+    // merges the child's text into the parent's text node and stamps no
+    // pos.file on it, so there is no provenance to carry and the reverse
+    // gesture covers block-level includes only.
+    const stamp = record.type === 'link'
+      ? file !== undefined && !rewritten && typeof record.href === 'string' && isFolderRelativeDestination(record.href)
+      : file !== undefined && file !== parentFile
+    if (stamp) {
       record.attrs = record.attrs ?? {}
-      record.attrs.keyValues = { ...record.attrs.keyValues, [ORIGIN_ATTRIBUTE]: origin }
+      record.attrs.keyValues = { ...record.attrs.keyValues, [ORIGIN_ATTRIBUTE]: file as string }
     }
   }
-  for (const value of Object.values(record as Record<string, unknown>)) if (Array.isArray(value)) for (const child of value) stampIncludeOrigins(child)
+  for (const value of Object.values(record as Record<string, unknown>)) if (Array.isArray(value)) for (const child of value) stampIncludeOrigins(child, file ?? parentFile)
 }
 
 /** Expand, then render the same way the plain preview path renders. */
