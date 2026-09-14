@@ -13,7 +13,7 @@
  * working directory is not merely rejected - it is unreachable.
  */
 import { expandIncludes, parse, renderHtml, resolve as resolveDocument, type Document, type IncludeDependency, type IncludeWarning } from '@markup-carve/carve'
-import { RENDER_OPTIONS, rewriteWikiSyntax } from './render.js'
+import { ORIGIN_ATTRIBUTE, RENDER_OPTIONS, isFolderRelativeDestination, rewriteWikiSyntax } from './render.js'
 
 /** The vault, narrowed to what expansion needs, so tests need no Obsidian. */
 export interface VaultGateway {
@@ -196,8 +196,45 @@ export async function expandForPreview(source: string, options: PreviewExpansion
   }
 }
 
+/**
+ * Classes on links the plugin itself rewrote. `rewriteWikiSyntax` already
+ * rebased those against the writing file's folder, so stamping them would
+ * rebase a second time.
+ */
+const REBASED_BY_REWRITE = ['carve-wikilink', 'carve-embed']
+
+/**
+ * Stamp the file each link was written in onto the link, so a relative
+ * destination resolves against that file rather than the root document it was
+ * inlined into.
+ *
+ * The identity is the engine's `pos.file` (PART 9 section 19), not a source
+ * rewrite: a regex over the child's source would also hit destinations inside
+ * code spans and fences, which are text rather than links. Run it AFTER
+ * `resolve()`, where a reference link finally carries its destination.
+ */
+export function stampIncludeOrigins(node: unknown): void {
+  if (node === null || typeof node !== 'object') return
+  const record = node as { type?: string; href?: string; pos?: { file?: string }; attrs?: { classes?: string[]; keyValues?: Record<string, string> } }
+  if (record.type === 'link') {
+    // An authored attribute of this name never survives. The origin states
+    // where the engine says the node came from; a document does not get to
+    // assert it and redirect where a click lands.
+    if (record.attrs?.keyValues) delete record.attrs.keyValues[ORIGIN_ATTRIBUTE]
+    const origin = record.pos?.file
+    const rewritten = record.attrs?.classes?.some((name) => REBASED_BY_REWRITE.includes(name)) ?? false
+    if (origin !== undefined && !rewritten && typeof record.href === 'string' && isFolderRelativeDestination(record.href)) {
+      record.attrs = record.attrs ?? {}
+      record.attrs.keyValues = { ...record.attrs.keyValues, [ORIGIN_ATTRIBUTE]: origin }
+    }
+  }
+  for (const value of Object.values(record as Record<string, unknown>)) if (Array.isArray(value)) for (const child of value) stampIncludeOrigins(child)
+}
+
 /** Expand, then render the same way the plain preview path renders. */
 export async function renderCarveWithIncludes(source: string, options: PreviewExpansionOptions): Promise<PreviewExpansion & { html: string }> {
   const expansion = await expandForPreview(source, options)
-  return { ...expansion, html: renderHtml(resolveDocument(expansion.doc), RENDER_OPTIONS) }
+  const resolved = resolveDocument(expansion.doc)
+  stampIncludeOrigins(resolved)
+  return { ...expansion, html: renderHtml(resolved, RENDER_OPTIONS) }
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IncludeCache, MAX_CACHE_ENTRIES, classifyDiagnostics, expandForPreview, renderCarveWithIncludes, resolveVaultPath } from '../dist-test/includes.js'
+import { ORIGIN_ATTRIBUTE } from '../dist-test/render.js'
 
 /** A vault of `path -> { source, mtime }`, counting reads. */
 function vault(files) {
@@ -184,4 +185,70 @@ test('a vault-root wikilink in an included file is left alone', async () => {
   const { gateway } = vault({ 'sub/child.crv': 'See [[/Top]].\n' })
   const result = await renderCarveWithIncludes('{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
   assert.match(result.html, /href="\/Top"/)
+})
+
+/** Rendered origin of the first link with this href: the value, or null when it carries none. */
+function originOf(html, href) {
+  const at = html.indexOf(`<a href="${href}"`)
+  assert.notEqual(at, -1, `no rendered link with href ${href}`)
+  const tag = html.slice(at, html.indexOf('>', at))
+  const key = `${ORIGIN_ATTRIBUTE}="`
+  const from = tag.indexOf(key)
+  return from === -1 ? null : tag.slice(from + key.length, tag.indexOf('"', from + key.length))
+}
+
+test('a relative link written in an included file carries that file as its origin', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'See [neighbour](foo.crv).\n' })
+  const result = await renderCarveWithIncludes('{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
+  assert.equal(originOf(result.html, 'foo.crv'), 'sub/child.crv')
+})
+
+test('a relative link in the root document carries no origin', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'Child.\n' })
+  const result = await renderCarveWithIncludes('See [neighbour](foo.crv).\n\n{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
+  assert.equal(originOf(result.html, 'foo.crv'), null)
+})
+
+test('a link from a grandchild carries the grandchild, not the child', async () => {
+  const { gateway } = vault({ 'a/one.crv': '{{ deep/two.crv }}\n', 'a/deep/two.crv': 'See [far](foo.crv).\n' })
+  const result = await renderCarveWithIncludes('{{ a/one.crv }}\n', { sourcePath: 'root.crv', gateway })
+  assert.equal(originOf(result.html, 'foo.crv'), 'a/deep/two.crv')
+})
+
+test('a reference link written in an included file carries its origin', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'See [neighbour][ref].\n\n[ref]: foo.crv\n' })
+  const result = await renderCarveWithIncludes('{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
+  assert.equal(originOf(result.html, 'foo.crv'), 'sub/child.crv')
+})
+
+test('an external destination in an included file carries no origin', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'See [out](https://example.com/a).\n' })
+  const result = await renderCarveWithIncludes('{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
+  assert.equal(originOf(result.html, 'https://example.com/a'), null)
+})
+
+test('a vault-root destination in an included file carries no origin', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'See [top](/Top.crv).\n' })
+  const result = await renderCarveWithIncludes('{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
+  assert.equal(originOf(result.html, '/Top.crv'), null)
+})
+
+test('a wikilink in an included file is not stamped, having been rebased already', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'See [[Sibling]].\n' })
+  const result = await renderCarveWithIncludes('{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
+  // Rebasing it a second time, against sub/, would ask for sub/sub/Sibling.
+  assert.equal(originOf(result.html, 'sub/Sibling'), null)
+})
+
+test('an origin the root document wrote itself does not survive', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'Child.\n' })
+  const source = 'See [x](foo.crv){data-carve-origin="elsewhere.crv"}.\n\n{{ sub/child.crv }}\n'
+  const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway })
+  assert.equal(originOf(result.html, 'foo.crv'), null)
+})
+
+test('an origin an included file wrote itself is replaced by its real one', async () => {
+  const { gateway } = vault({ 'sub/child.crv': 'See [x](foo.crv){data-carve-origin="elsewhere.crv"}.\n' })
+  const result = await renderCarveWithIncludes('{{ sub/child.crv }}\n', { sourcePath: 'root.crv', gateway })
+  assert.equal(originOf(result.html, 'foo.crv'), 'sub/child.crv')
 })
