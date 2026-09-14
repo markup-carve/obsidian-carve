@@ -1,10 +1,11 @@
 import { basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { FuzzySuggestModal, Modal, Plugin, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
+import { FuzzySuggestModal, Modal, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
 import { CarveIndex } from './indexer'
-import { extractMetadata, withCrvExtension, type CarveMetadata } from './metadata'
+import { extractMetadata, headingsFromDocument, withCrvExtension, type CarveMetadata } from './metadata'
 import { renderCarve } from './render'
+import { IncludeCache, renderCarveWithIncludes, type IncludeDiagnostic, type VaultGateway } from './includes'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
@@ -15,6 +16,15 @@ import { captureVisualSnapshot, restoreVisualSnapshot, type VisualSnapshot } fro
 
 export const CARVE_VIEW_TYPE = 'carve-view'
 export type CarveViewMode = 'preview' | 'source' | 'split' | 'visual'
+
+export interface CarveSettings {
+  includes: {
+    /** Expand `{{ path }}` directives in the reading view (PART 9 section 19). */
+    enabled: boolean
+  }
+}
+
+export const DEFAULT_SETTINGS: CarveSettings = { includes: { enabled: true } }
 
 interface CarveSearchEntry { path: string; searchable: string }
 class CarveSearchModal extends FuzzySuggestModal<CarveSearchEntry> {
@@ -53,6 +63,8 @@ export class CarveView extends TextFileView {
   private saveTimer: number | null = null
   private visualOriginal = ''
   private visualCleanup: (() => void) | null = null
+  private watched = new Set<string>()
+  private splitPreview: HTMLElement | null = null
 
   constructor(leaf: WorkspaceLeaf, private plugin: CarvePlugin) { super(leaf); this.navigation = true }
   getViewType(): string { return CARVE_VIEW_TYPE }
@@ -71,6 +83,15 @@ export class CarveView extends TextFileView {
 
   async onClose(): Promise<void> { this.destroyEditor() }
   setMode(mode: CarveViewMode): void { if (mode !== this.mode) { this.mode = mode; void this.draw() } }
+  /**
+   * Re-render without touching an open editor's selection or undo history.
+   * In split mode only the preview pane is redrawn, because `draw()` destroys
+   * and rebuilds the editor.
+   */
+  redraw(): void {
+    if (this.mode === 'preview') void this.draw()
+    else if (this.mode === 'split' && this.splitPreview) void this.renderPreview(this.splitPreview)
+  }
   getMode(): CarveViewMode { return this.mode }
   setViewData(data: string, clear: boolean): void { this.source = data; if (clear) this.contentEl.empty(); void this.draw() }
   getViewData(): string { return this.editor?.state.doc.toString() ?? this.source }
@@ -148,6 +169,7 @@ export class CarveView extends TextFileView {
 
   private async draw(): Promise<void> {
     this.destroyEditor()
+    this.splitPreview = null
     this.contentEl.empty()
     this.contentEl.className = `view-content carve-view carve-mode-${this.mode}`
     if (this.mode === 'source') { this.createEditor(this.contentEl.createDiv({ cls: 'carve-editor' })); return }
@@ -156,6 +178,7 @@ export class CarveView extends TextFileView {
       const split = this.contentEl.createDiv({ cls: 'carve-split' })
       const editor = split.createDiv({ cls: 'carve-editor' })
       const preview = split.createDiv({ cls: ['carve-preview', 'markdown-rendered'] })
+      this.splitPreview = preview
       this.createEditor(editor, preview)
       await this.renderPreview(preview)
       return
@@ -486,15 +509,50 @@ export class CarveView extends TextFileView {
   private async renderPreview(preview: HTMLElement): Promise<void> {
     const serial = ++this.renderSerial
     const metadata = extractMetadata(this.source)
+    const expansion = await this.expand()
+    // The watch set belongs to the render that is about to be shown. A render
+    // overtaken while it awaited must not leave its own dependencies behind.
+    if (serial !== this.renderSerial) return
+    this.watched = new Set(expansion?.watchPaths ?? [])
     preview.empty()
     const layout = preview.createDiv({ cls: 'carve-reading-layout' })
+    if (expansion) this.drawDiagnostics(layout, expansion.diagnostics, expansion.suppressed)
     const article = layout.createEl('article', { cls: 'carve-document' })
-    article.innerHTML = renderCarve(this.source)
+    article.innerHTML = expansion ? expansion.html : renderCarve(this.source)
     this.decorateCallouts(article)
     await this.resolveEmbeds(article, this.file?.path ?? '', 0)
     if (serial !== this.renderSerial) return
     this.wireLinks(article)
+    // The outline pairs headings with rendered elements by index, so an
+    // expanded document has to report the headings its children contributed.
+    if (expansion) metadata.headings = headingsFromDocument(expansion.doc)
     this.drawInspector(layout.createEl('aside', { cls: 'carve-inspector' }), metadata)
+  }
+
+  /**
+   * Expand includes for this document, or null when the feature is off, the
+   * document carries no directive, or it has no path to resolve against.
+   */
+  private async expand(): Promise<(Awaited<ReturnType<typeof renderCarveWithIncludes>>) | null> {
+    const path = this.file?.path
+    if (!this.plugin.settings.includes.enabled || !path || !this.source.includes('{{')) return null
+    return renderCarveWithIncludes(this.source, { sourcePath: path, gateway: this.plugin.gateway, cache: this.plugin.includeCache })
+  }
+
+  /** True when a vault change touches a file this document included, or tried to. */
+  includes(path: string): boolean { return this.watched.has(path) }
+
+  private drawDiagnostics(parent: HTMLElement, diagnostics: readonly IncludeDiagnostic[], suppressed: number): void {
+    if (!diagnostics.length) return
+    const box = parent.createDiv({ cls: 'carve-include-diagnostics', attr: { role: 'status', 'aria-live': 'polite', 'aria-label': 'Include warnings' } })
+    box.createDiv({ cls: 'carve-include-diagnostics-title', text: `${diagnostics.length} include warning${diagnostics.length === 1 ? '' : 's'}` })
+    const list = box.createEl('ul')
+    for (const diagnostic of diagnostics) {
+      const item = list.createEl('li', { cls: `carve-include-${diagnostic.rule}` })
+      item.createEl('span', { cls: 'carve-include-diagnostic-where', text: `${diagnostic.file ?? ''}:${diagnostic.line}:${diagnostic.column}` })
+      item.createEl('span', { cls: 'carve-include-diagnostic-message', text: ` ${diagnostic.message}` })
+    }
+    if (suppressed > 0) box.createDiv({ cls: 'carve-include-diagnostics-more', text: `${suppressed} further warning${suppressed === 1 ? '' : 's'} not shown.` })
   }
 
   private decorateCallouts(root: HTMLElement): void {
@@ -555,14 +613,76 @@ export class CarveView extends TextFileView {
   }
 }
 
+class CarveSettingTab extends PluginSettingTab {
+  constructor(app: App, private plugin: CarvePlugin) { super(app, plugin) }
+  display(): void {
+    this.containerEl.empty()
+    new Setting(this.containerEl)
+      .setName('Expand includes in the reading view')
+      .setDesc('Replace {{ path }} directives with the file they name, resolved inside this vault. Turn it off to show the directive as written.')
+      .addToggle((toggle) => toggle.setValue(this.plugin.settings.includes.enabled).onChange(async (value) => {
+        this.plugin.settings.includes.enabled = value
+        await this.plugin.saveSettings()
+      }))
+  }
+}
+
 export default class CarvePlugin extends Plugin {
   index = new CarveIndex(this.app)
+  settings: CarveSettings = { includes: { ...DEFAULT_SETTINGS.includes } }
+  includeCache = new IncludeCache()
+  /**
+   * Include targets are read through the vault, never through `node:fs`, so
+   * the containment root is the vault and the process working directory is
+   * unreachable rather than merely refused.
+   */
+  gateway: VaultGateway = {
+    mtime: (path) => {
+      const file = this.app.vault.getAbstractFileByPath(normalizePath(path))
+      return file instanceof TFile ? file.stat.mtime : null
+    },
+    read: (path) => {
+      const file = this.app.vault.getAbstractFileByPath(normalizePath(path))
+      if (!(file instanceof TFile)) throw new Error(`No such file: ${path}`)
+      return this.app.vault.cachedRead(file)
+    },
+  }
+
   async onload(): Promise<void> {
+    await this.loadSettings()
+    this.addSettingTab(new CarveSettingTab(this.app, this))
     this.registerView(CARVE_VIEW_TYPE, (leaf) => new CarveView(leaf, this)); this.registerExtensions(['crv'], CARVE_VIEW_TYPE); await this.index.start()
+    this.registerEvent(this.app.vault.on('modify', (file: TAbstractFile) => this.invalidate(file.path)))
+    this.registerEvent(this.app.vault.on('create', (file: TAbstractFile) => this.invalidate(file.path)))
+    this.registerEvent(this.app.vault.on('delete', (file: TAbstractFile) => this.invalidate(file.path)))
+    this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => { this.invalidate(oldPath); this.invalidate(file.path) }))
     for (const [id, name, mode] of [['carve-reading-view', 'Open reading view', 'preview'], ['carve-source-view', 'Open source view', 'source'], ['carve-split-view', 'Open live split view', 'split'], ['carve-visual-view', 'Open experimental visual editor', 'visual']] as const) this.addCommand({ id, name, checkCallback: (checking) => { const view = this.app.workspace.getActiveViewOfType(CarveView); if (!view) return false; if (!checking) view.setMode(mode); return true } })
     this.addCommand({ id: 'carve-search', name: 'Search files, headings, and tags', callback: () => new CarveSearchModal(this).open() })
   }
-  onunload(): void { this.index.stop() }
+  onunload(): void { this.index.stop(); this.includeCache.clear() }
+
+  async loadSettings(): Promise<void> {
+    const stored = (await this.loadData()) as Partial<CarveSettings> | null
+    this.settings = { includes: { ...DEFAULT_SETTINGS.includes, ...(stored?.includes ?? {}) } }
+  }
+
+  async saveSettings(): Promise<void> {
+    await this.saveData(this.settings)
+    this.includeCache.clear()
+    for (const leaf of this.app.workspace.getLeavesOfType(CARVE_VIEW_TYPE)) { const view = leaf.view; if (view instanceof CarveView) view.redraw() }
+  }
+
+  /**
+   * Re-render every reading view that included this path, or tried to: a
+   * target that was missing is watched exactly so that creating it lands.
+   */
+  private invalidate(path: string): void {
+    this.includeCache.invalidate(path)
+    for (const leaf of this.app.workspace.getLeavesOfType(CARVE_VIEW_TYPE)) {
+      const view = leaf.view
+      if (view instanceof CarveView && view.includes(path)) view.redraw()
+    }
+  }
   async openCarve(path: string): Promise<void> { const file = this.app.vault.getAbstractFileByPath(normalizePath(path)); if (file instanceof TFile) await this.app.workspace.getLeaf(false).openFile(file) }
   resolveCarve(target: string, sourcePath: string): TFile | null {
     const clean = decodeURIComponent(target.split('#', 1)[0] ?? ''); const wanted = withCrvExtension(clean); const parent = sourcePath.includes('/') ? sourcePath.slice(0, sourcePath.lastIndexOf('/')) : ''

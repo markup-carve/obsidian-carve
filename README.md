@@ -123,6 +123,35 @@ whole body through HTML.
 - Admonitions, embedded notes, tables, and the inspector use Obsidian theme
   variables and remain responsive on narrow/mobile layouts.
 
+## Includes
+
+The reading view expands `{{ path }}` include directives (PART 9 section 19),
+replacing each one with the file it names.
+
+- **On by default.** Turn it off under Settings, Community plugins, Carve,
+  *Expand includes in the reading view*; the directive then renders as the text
+  it is.
+- **The vault is the containment root.** A path is resolved relative to the
+  including document, `/path` is vault-root-relative, and a path that climbs
+  out of the vault is refused and reported. Targets are read through the vault,
+  so the process working directory is unreachable rather than merely rejected.
+- **The path is used as written.** No extension is guessed, so a document
+  previewed here and one rendered by `carve render` agree.
+- **A change to an included file re-renders the preview.** Targets that failed
+  to resolve are watched too, so creating a missing file lands immediately.
+- **Warnings are shown, not swallowed.** An unresolved target, a cycle, a
+  containment refusal, an exceeded depth or size budget appears above the
+  document instead of leaving a real error looking like ordinary prose.
+- Included content is rendered under the same rules as the document itself:
+  raw HTML stays disabled, and a wikilink inside a child is rebased against the
+  child's own folder so `[[Sibling]]` opens the note beside the child rather
+  than beside the root document.
+
+Not covered yet, each with a follow-up issue: a plain relative link
+destination inside a child still resolves against the root document,
+go-to-definition on an include path, and export/copy of a flattened or bundled
+document.
+
 ## Install for development
 
 ```bash

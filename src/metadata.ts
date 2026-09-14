@@ -1,4 +1,4 @@
-import { parse as parseCarve, type BlockNode, type InlineNode } from '@markup-carve/carve'
+import { parse as parseCarve, type BlockNode, type Document, type InlineNode } from '@markup-carve/carve'
 import { parse as parseYaml } from 'yaml'
 import { parse as parseToml } from 'smol-toml'
 
@@ -29,10 +29,23 @@ function walkBlocks(nodes: BlockNode[], headings: CarveHeading[]): void {
   }
 }
 
-export function extractMetadata(source: string): CarveMetadata {
-  const document = parseCarve(source, { positions: true })
+/**
+ * Headings in document order.
+ *
+ * Taken from the tree rather than the source so an expanded document reports
+ * the headings its children contributed. The reading view pairs this list with
+ * the rendered `h1`-`h6` elements by index, so a list built from the
+ * unexpanded source would scroll the outline to the wrong place.
+ */
+export function headingsFromDocument(document: Document): CarveHeading[] {
   const headings: CarveHeading[] = []
   walkBlocks(document.children, headings)
+  return headings
+}
+
+export function extractMetadata(source: string): CarveMetadata {
+  const document = parseCarve(source, { positions: true })
+  const headings = headingsFromDocument(document)
   const links: CarveLink[] = []
   for (const match of source.matchAll(/(!?)\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g)) {
     const target = match[2]?.trim()
