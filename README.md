@@ -158,9 +158,21 @@ replacing each one with the file it names.
   the root document it was inlined into, and a link inside an embedded note
   resolves against that note. A destination that names its target without a
   folder - an absolute URL, `/vault-root`, a bare `#fragment` - is untouched.
+- **Go to the file a directive names.** Ctrl/cmd-click an include directive in
+  the source or split view, or run `Carve: Open the included file`, and the
+  target opens. A target outside the vault or one that is not there says so in
+  the same words the diagnostics above the document use, rather than doing
+  nothing. A directive inside a code span or a fence is text, and the gesture
+  agrees with the preview about that.
+- **Go back to the file inlined content came from.** In the reading view,
+  ctrl/cmd-click inside expanded content - or click it and run the same
+  command - to open the file that wrote it. This covers a directive that
+  stands as its own block, which is the usual way to write one; a directive
+  expanded mid-sentence leaves no trace of its origin in the rendered
+  document, so there is nothing there to jump from.
 
-Not covered yet, each with a follow-up issue: go-to-definition on an include
-path, and export/copy of a flattened or bundled document.
+Not covered yet, with a follow-up issue: export and copy of a flattened or
+bundled document.
 
 ## Security and scope
 

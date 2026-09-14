@@ -4,7 +4,7 @@ import { Window } from 'happy-dom'
 
 const window = new Window()
 Object.assign(globalThis, { document: window.document, Element: window.Element })
-const { ORIGIN_ATTRIBUTE, isFolderRelativeDestination, claimRenderedOrigins } = await import('../dist-test/render.js')
+const { ORIGIN_ATTRIBUTE, isFolderRelativeDestination, claimRenderedOrigins, originAt } = await import('../dist-test/render.js')
 
 const host = (html) => { const element = document.createElement('div'); element.innerHTML = html; return element }
 
@@ -54,4 +54,18 @@ test('a document with no file of its own carries no origin at all', () => {
   const root = host('<p><a href="foo.crv" data-carve-origin="elsewhere.crv">n</a></p>')
   claimRenderedOrigins(root, '')
   assert.equal(root.querySelector('a').getAttribute(ORIGIN_ATTRIBUTE), null)
+})
+
+test('content inside an included region reports the file it came from', () => {
+  const root = host('<p data-carve-origin="sub/child.crv">Child <em>para</em>.</p>')
+  assert.equal(originAt(root.querySelector('em')), 'sub/child.crv')
+})
+
+test('content the open document wrote reports no origin', () => {
+  const root = host('<p>Root para.</p>')
+  assert.equal(originAt(root.querySelector('p')), null)
+})
+
+test('nothing under the pointer reports no origin', () => {
+  assert.equal(originAt(null), null)
 })

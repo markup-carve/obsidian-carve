@@ -1,10 +1,11 @@
 import { basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { FuzzySuggestModal, Modal, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
+import { FuzzySuggestModal, Modal, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
 import { CarveIndex } from './indexer'
 import { extractMetadata, headingsFromDocument, withCrvExtension, type CarveMetadata } from './metadata'
-import { ORIGIN_ATTRIBUTE, claimRenderedOrigins, renderCarve } from './render'
+import { ORIGIN_ATTRIBUTE, claimRenderedOrigins, originAt, renderCarve } from './render'
+import { directiveSiteAt, includeNavigation } from './include-navigation'
 import { IncludeCache, renderCarveWithIncludes, type IncludeDiagnostic, type VaultGateway } from './includes'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
@@ -65,6 +66,8 @@ export class CarveView extends TextFileView {
   private visualCleanup: (() => void) | null = null
   private watched = new Set<string>()
   private splitPreview: HTMLElement | null = null
+  /** Where the reader last clicked in the reading view, for the include gesture. */
+  private lastPreviewTarget: Element | null = null
 
   constructor(leaf: WorkspaceLeaf, private plugin: CarvePlugin) { super(leaf); this.navigation = true }
   getViewType(): string { return CARVE_VIEW_TYPE }
@@ -118,6 +121,19 @@ export class CarveView extends TextFileView {
           const target = this.plugin.app.metadataCache.getFirstLinkpathDest(destination, this.file?.path ?? '')
           return target ? this.plugin.app.vault.getResourcePath(target) : null
         })]), carveEditorCommands, EditorView.lineWrapping,
+          // Ctrl/cmd-click on an include directive opens the file it names,
+          // the same gesture Obsidian uses for a link.
+          EditorView.domEventHandlers({
+            mousedown: (event, view) => {
+              if (event.button !== 0 || !(event.ctrlKey || event.metaKey)) return false
+              const offset = view.posAtCoords({ x: event.clientX, y: event.clientY })
+              const site = offset === null ? null : directiveSiteAt(view.state.doc.toString(), offset)
+              if (!site) return false
+              event.preventDefault()
+              this.openDirective(site.path)
+              return true
+            },
+          }),
           EditorView.contentAttributes.of({ 'aria-label': 'Carve source' }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return
@@ -514,6 +530,7 @@ export class CarveView extends TextFileView {
     // overtaken while it awaited must not leave its own dependencies behind.
     if (serial !== this.renderSerial) return
     this.watched = new Set(expansion?.watchPaths ?? [])
+    this.lastPreviewTarget = null
     preview.empty()
     const layout = preview.createDiv({ cls: 'carve-reading-layout' })
     if (expansion) this.drawDiagnostics(layout, expansion.diagnostics, expansion.suppressed)
@@ -545,6 +562,33 @@ export class CarveView extends TextFileView {
 
   /** True when a vault change touches a file this document included, or tried to. */
   includes(path: string): boolean { return this.watched.has(path) }
+
+  /**
+   * Run the go-to-include gesture, or report that nothing here names a file.
+   * In the source views that is the directive under the cursor; in the reading
+   * view it is the file the content last clicked was written in.
+   */
+  openInclude(checking: boolean): boolean {
+    if (this.mode === 'preview') {
+      const origin = originAt(this.lastPreviewTarget)
+      if (origin && !checking) void this.plugin.openCarve(origin)
+      return origin !== null
+    }
+    const editor = this.editor
+    const site = editor ? directiveSiteAt(editor.state.doc.toString(), editor.state.selection.main.head) : null
+    if (site && !checking) this.openDirective(site.path)
+    return site !== null
+  }
+
+  /**
+   * A denied or missing target says so rather than doing nothing, in the same
+   * words the reading view's diagnostics use for it.
+   */
+  private openDirective(path: string): void {
+    const outcome = includeNavigation(path, this.file?.path ?? '', (target) => this.plugin.gateway.mtime(target) !== null)
+    if (outcome.kind === 'open') void this.plugin.openCarve(outcome.path)
+    else new Notice(outcome.message)
+  }
 
   private drawDiagnostics(parent: HTMLElement, diagnostics: readonly IncludeDiagnostic[], suppressed: number): void {
     if (!diagnostics.length) return
@@ -589,8 +633,16 @@ export class CarveView extends TextFileView {
 
   private wireLinks(root: HTMLElement): void {
     root.addEventListener('click', (event) => {
-      const anchor = (event.target as HTMLElement).closest<HTMLAnchorElement>('a')
-      if (!anchor) return
+      const element = event.target instanceof Element ? event.target : null
+      this.lastPreviewTarget = element
+      const anchor = element?.closest<HTMLAnchorElement>('a') ?? null
+      if (!anchor) {
+        // Inlined content has no link to click, so the gesture reaches the
+        // file it came from instead - go to definition, from the other end.
+        const origin = (event.ctrlKey || event.metaKey) ? originAt(element) : null
+        if (origin) { event.preventDefault(); void this.plugin.openCarve(origin) }
+        return
+      }
       const href = anchor.getAttribute('href')
       if (!href || /^(?:https?:|mailto:|#)/.test(href)) return
       event.preventDefault()
@@ -667,6 +719,7 @@ export default class CarvePlugin extends Plugin {
     this.registerEvent(this.app.vault.on('delete', (file: TAbstractFile) => this.invalidate(file.path)))
     this.registerEvent(this.app.vault.on('rename', (file: TAbstractFile, oldPath: string) => { this.invalidate(oldPath); this.invalidate(file.path) }))
     for (const [id, name, mode] of [['carve-reading-view', 'Open reading view', 'preview'], ['carve-source-view', 'Open source view', 'source'], ['carve-split-view', 'Open live split view', 'split'], ['carve-visual-view', 'Open experimental visual editor', 'visual']] as const) this.addCommand({ id, name, checkCallback: (checking) => { const view = this.app.workspace.getActiveViewOfType(CarveView); if (!view) return false; if (!checking) view.setMode(mode); return true } })
+    this.addCommand({ id: 'carve-open-include', name: 'Open the included file', checkCallback: (checking) => this.app.workspace.getActiveViewOfType(CarveView)?.openInclude(checking) ?? false })
     this.addCommand({ id: 'carve-search', name: 'Search files, headings, and tags', callback: () => new CarveSearchModal(this).open() })
   }
   onunload(): void { this.index.stop(); this.includeCache.clear() }

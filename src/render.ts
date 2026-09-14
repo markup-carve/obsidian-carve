@@ -50,9 +50,18 @@ export function isFolderRelativeDestination(destination: string): boolean {
  * render path, which never sees the tree.
  */
 export function claimRenderedOrigins(root: ParentNode, origin: string): void {
+  for (const claimed of Array.from(root.querySelectorAll(`[${ORIGIN_ATTRIBUTE}]`))) claimed.removeAttribute(ORIGIN_ATTRIBUTE)
+  if (origin === '') return
   for (const anchor of Array.from(root.querySelectorAll('a'))) {
-    anchor.removeAttribute(ORIGIN_ATTRIBUTE)
     const href = anchor.getAttribute('href')
-    if (origin !== '' && href !== null && isFolderRelativeDestination(href)) anchor.setAttribute(ORIGIN_ATTRIBUTE, origin)
+    if (href !== null && isFolderRelativeDestination(href)) anchor.setAttribute(ORIGIN_ATTRIBUTE, origin)
   }
+}
+
+/**
+ * The file the content at `element` was written in: its own origin, or the one
+ * on the included region it sits inside. Null in content the open file wrote.
+ */
+export function originAt(element: Element | null): string | null {
+  return element?.closest(`[${ORIGIN_ATTRIBUTE}]`)?.getAttribute(ORIGIN_ATTRIBUTE) ?? null
 }
