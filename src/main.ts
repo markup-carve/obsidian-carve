@@ -7,6 +7,7 @@ import { extractMetadata, headingsFromDocument, withCrvExtension, type CarveMeta
 import { ORIGIN_ATTRIBUTE, claimRenderedOrigins, originAt, renderCarve } from './render'
 import { directiveSiteAt, includeNavigation } from './include-navigation'
 import { IncludeCache, renderCarveWithIncludes, type IncludeDiagnostic, type VaultGateway } from './includes'
+import { flattenDocument, flattenSummary, flattenedPath, type FlattenResult } from './flatten'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
@@ -560,6 +561,51 @@ export class CarveView extends TextFileView {
     return renderCarveWithIncludes(this.source, { sourcePath: path, gateway: this.plugin.gateway, cache: this.plugin.includeCache })
   }
 
+  /**
+   * Expand every include and write the document back as one Carve file.
+   *
+   * The reading-view setting is deliberately not consulted: this is a named
+   * gesture the reader just asked for, and honouring the setting here would
+   * quietly hand back the unflattened document instead of refusing.
+   */
+  private async flatten(): Promise<FlattenResult | null> {
+    const path = this.file?.path
+    if (!path) return null
+    return flattenDocument(this.getViewData(), { sourcePath: path, gateway: this.plugin.gateway, cache: this.plugin.includeCache })
+  }
+
+  /**
+   * Put the flattened document on the clipboard, as `text/plain`.
+   *
+   * A clipboard can carry the author's document with its directives intact
+   * under a Carve-specific type at the same time (issue 25), which needs a
+   * format name agreed with the other editor integrations first.
+   */
+  async copyFlattened(): Promise<void> {
+    const result = await this.flatten()
+    if (!result) return
+    try { await navigator.clipboard.writeText(result.text) } catch { new Notice('Carve: the clipboard refused the flattened document.'); return }
+    new Notice(flattenSummary(result, 'Copied as a single document.'))
+  }
+
+  /**
+   * Write the flattened document into the vault beside its original.
+   *
+   * The destination is derived from the open file's own vault path and created
+   * through the vault, so the export is contained by construction rather than
+   * by a check on a path someone typed.
+   */
+  async exportFlattened(): Promise<void> {
+    const source = this.file?.path
+    if (!source) return
+    const destination = flattenedPath(source, (path) => this.plugin.gateway.mtime(path) !== null)
+    if (destination === null) { new Notice('Carve: no free name left for a flattened copy of this document.'); return }
+    const result = await this.flatten()
+    if (!result) return
+    try { await this.app.vault.create(destination, result.text) } catch { new Notice(`Carve: could not write ${destination}.`); return }
+    new Notice(flattenSummary(result, `Exported ${destination}.`))
+  }
+
   /** True when a vault change touches a file this document included, or tried to. */
   includes(path: string): boolean { return this.watched.has(path) }
 
@@ -721,6 +767,10 @@ export default class CarvePlugin extends Plugin {
     for (const [id, name, mode] of [['carve-reading-view', 'Open reading view', 'preview'], ['carve-source-view', 'Open source view', 'source'], ['carve-split-view', 'Open live split view', 'split'], ['carve-visual-view', 'Open experimental visual editor', 'visual']] as const) this.addCommand({ id, name, checkCallback: (checking) => { const view = this.app.workspace.getActiveViewOfType(CarveView); if (!view) return false; if (!checking) view.setMode(mode); return true } })
     this.addCommand({ id: 'carve-open-include', name: 'Open the included file', checkCallback: (checking) => this.app.workspace.getActiveViewOfType(CarveView)?.openInclude(checking) ?? false })
     this.addCommand({ id: 'carve-search', name: 'Search files, headings, and tags', callback: () => new CarveSearchModal(this).open() })
+    for (const [id, name, run] of [
+      ['carve-copy-flattened', 'Copy as a single document', (view: CarveView) => view.copyFlattened()],
+      ['carve-export-flattened', 'Export as a self-contained Carve file', (view: CarveView) => view.exportFlattened()],
+    ] as const) this.addCommand({ id, name, checkCallback: (checking) => { const view = this.app.workspace.getActiveViewOfType(CarveView); if (!view?.file) return false; if (!checking) void run(view); return true } })
   }
   onunload(): void { this.index.stop(); this.includeCache.clear() }
 

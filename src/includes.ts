@@ -49,12 +49,25 @@ export interface PreviewExpansionOptions {
   cache?: IncludeCache
   /** Read rounds allowed. Default 20, one past the engine's default depth of 16. */
   maxRounds?: number
+  /**
+   * Rewrite Obsidian wiki syntax into Carve links before parsing. Default true,
+   * which is what the reading view wants. A caller producing Carve SOURCE turns
+   * it off: that output is a document the author keeps, so the author's own
+   * markup has to survive it.
+   */
+  rewriteWiki?: boolean
 }
 
 export const DEFAULT_MAX_ROUNDS = 20
 export const MAX_CACHE_ENTRIES = 128
 
-/** Child source keyed on target identity plus modification time. */
+/**
+ * Child source keyed on target identity plus modification time.
+ *
+ * The source is stored exactly as the vault returned it. Callers that want the
+ * reading view's wiki-syntax rewrite apply it when they take an entry out, so
+ * one cache serves both the preview and a flatten and `invalidate` covers both.
+ */
 export class IncludeCache {
   private entries = new Map<string, { mtime: number; source: string }>()
 
@@ -162,7 +175,11 @@ export async function expandForPreview(source: string, options: PreviewExpansion
   const { sourcePath, gateway } = options
   const cache = options.cache ?? new IncludeCache()
   const maxRounds = options.maxRounds ?? DEFAULT_MAX_ROUNDS
-  const rewritten = rewriteWikiSyntax(source)
+  // The child's wikilinks are rebased against the child's own folder: once its
+  // content is inlined the reading view only knows the ROOT document's path, so
+  // an unrebased `[[Sibling]]` would open a note beside the root.
+  const rewrite = (text: string, base: string): string => (options.rewriteWiki ?? true) ? rewriteWikiSyntax(text, base) : text
+  const rewritten = rewrite(source, '')
   // A read that throws is not retried: without this the next round would ask
   // for it again and the loop would only end at the round cap.
   const unreadable = new Set<string>()
@@ -183,7 +200,7 @@ export async function expandForPreview(source: string, options: PreviewExpansion
         if (mtime === null) return null
         const cached = cache.get(vaultPath, mtime)
         if (cached === undefined) { pending.set(vaultPath, mtime); return null }
-        return { source: cached, id: vaultPath }
+        return { source: rewrite(cached, directoryOf(vaultPath)), id: vaultPath }
       },
     })
 
@@ -197,10 +214,7 @@ export async function expandForPreview(source: string, options: PreviewExpansion
     }
 
     await Promise.all([...pending].map(async ([path, mtime]) => {
-      // The child's wikilinks are rebased against the child's own folder: once
-      // its content is inlined the reading view only knows the ROOT document's
-      // path, so an unrebased `[[Sibling]]` would open a note beside the root.
-      try { cache.set(path, mtime, rewriteWikiSyntax(await gateway.read(path), directoryOf(path))) } catch { unreadable.add(path) }
+      try { cache.set(path, mtime, await gateway.read(path)) } catch { unreadable.add(path) }
     }))
   }
 }
