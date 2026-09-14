@@ -3,6 +3,15 @@
 An Obsidian community plugin for reading and editing `.crv` files with the
 [Carve](https://markup-carve.github.io/carve/) markup language.
 
+## Install
+
+Download `main.js`, `manifest.json`, and `styles.css` from the
+[latest release](https://github.com/markup-carve/obsidian-carve/releases/latest)
+into `<vault>/.obsidian/plugins/carve/`, then enable **Carve** under Obsidian's
+Community plugins settings.
+
+## Features
+
 The plugin registers `.crv` as its own Obsidian view and provides four modes:
 
 - **Reading** renders the document with `@markup-carve/carve`.
@@ -152,17 +161,6 @@ destination inside a child still resolves against the root document,
 go-to-definition on an include path, and export/copy of a flattened or bundled
 document.
 
-## Install for development
-
-```bash
-npm install
-npm run build
-```
-
-Copy `main.js`, `manifest.json`, and `styles.css` into
-`.obsidian/plugins/carve/` in a test vault, then enable **Carve** under Community
-plugins.
-
 ## Security and scope
 
 Raw HTML is disabled when rendering vault documents. Standard Carve URL
@@ -176,13 +174,6 @@ surface. The plugin supplies honest Carve-owned outline, backlinks, properties,
 and search features instead of mutating private APIs or generating shadow
 Markdown files.
 
-## Verification
+## Development
 
-`npm run test:all` runs renderer, metadata, wikilink, and security tests, checks
-the plugin against the current Obsidian TypeScript API, and produces the
-bundled `main.js` artifact. The example is also exercised interactively in a
-disposable Obsidian vault before release.
-
-## License
-
-MIT
+Contributor setup, testing, and maintenance notes are in the [development guide](docs/development.md).
