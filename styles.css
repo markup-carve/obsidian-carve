@@ -22,6 +22,16 @@
 .carve-embedded-note { margin: 1rem 0; padding: .8rem 1rem; border-left: 3px solid var(--interactive-accent); background: var(--background-secondary); }
 .carve-embed-title { margin-bottom: .5rem; color: var(--text-muted); font-size: var(--font-ui-small); font-weight: var(--font-semibold); }
 .carve-embed-error { color: var(--text-error); }
+
+.carve-include-diagnostics { grid-column: 1 / -1; border: 1px solid var(--background-modifier-border); border-left: 3px solid var(--text-warning); border-radius: var(--radius-s); padding: 0.6rem 0.8rem; margin-bottom: 1rem; background: var(--background-secondary); font-size: var(--font-smaller); }
+.carve-include-diagnostics-title { font-weight: var(--font-semibold); margin-bottom: 0.3rem; }
+.carve-include-diagnostics ul { margin: 0; padding-left: 1.1rem; }
+.carve-include-diagnostics li { margin: 0.1rem 0; }
+.carve-include-diagnostic-where { color: var(--text-muted); font-family: var(--font-monospace); }
+.carve-include-diagnostics-more { color: var(--text-muted); margin-top: 0.3rem; }
+.carve-include-diagnostics .carve-include-containment,
+.carve-include-diagnostics .carve-include-cycle,
+.carve-include-diagnostics .carve-include-unresolved { color: var(--text-error); }
 .carve-document .admonition.callout { padding: 12px 12px 12px 24px; border: 0; border-radius: var(--callout-radius); background: rgba(var(--callout-color, var(--callout-default)), .1); }
 .carve-visual-shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; background: var(--background-primary); }
 .carve-visual-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; padding: .45rem var(--file-margins); border-bottom: 1px solid var(--background-modifier-border); background: var(--background-secondary); }
