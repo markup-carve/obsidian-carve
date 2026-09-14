@@ -171,8 +171,38 @@ replacing each one with the file it names.
   expanded mid-sentence leaves no trace of its origin in the rendered
   document, so there is nothing there to jump from.
 
-Not covered yet, with a follow-up issue: export and copy of a flattened or
-bundled document.
+### Flatten: export and copy one self-contained document
+
+Two commands write the open document back out as Carve with every include
+inlined, which is what `carve flatten` does at the command line.
+
+- `Carve: Copy as a single document` puts the flattened text on the clipboard.
+- `Carve: Export as a self-contained Carve file` writes it into the vault
+  beside the original, as `name.flat.crv`, stepping to `name.flat-2.crv` rather
+  than overwriting a file already there.
+
+Both read their targets through the vault and derive the destination from the
+open file's own vault path, so the export is contained by construction.
+
+Two consequences are reported when the command finishes, because neither is
+visible in the result:
+
+- **The output is canonical Carve.** Parent and children both go through the
+  writer, so formatting is normalized rather than preserved. What the author
+  wrote is left alone in one respect that matters here: wiki syntax is not
+  rewritten, so a flattened document can be edited on in Obsidian.
+- **Colliding ids are renamed.** An explicit heading id or footnote label a
+  child shares with the parent is suffixed (`intro-2`, spec I5) so the
+  flattened file renders exactly like the expanded original. The count is
+  reported rather than left to be found in a published page.
+
+Exporting a plain `.crv` from the file menu does **not** expand: writing a
+document back as Carve has to return the author's document (spec I15), which is
+why flattening is a separate, named action.
+
+Not covered yet, each with a follow-up issue: exporting a bundle (the document
+plus every file it pulls in), and carrying the author's document on the
+clipboard alongside the flattened text under a Carve-specific type.
 
 ## Security and scope
 
