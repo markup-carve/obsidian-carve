@@ -143,14 +143,15 @@ replacing each one with the file it names.
   containment refusal, an exceeded depth or size budget appears above the
   document instead of leaving a real error looking like ordinary prose.
 - Included content is rendered under the same rules as the document itself:
-  raw HTML stays disabled, and a wikilink inside a child is rebased against the
-  child's own folder so `[[Sibling]]` opens the note beside the child rather
-  than beside the root document.
+  raw HTML stays disabled.
+- **A link resolves against the file that wrote it.** A child saying
+  `[rel](foo.crv)` or `[[Sibling]]` opens the note beside the child, not beside
+  the root document it was inlined into, and a link inside an embedded note
+  resolves against that note. A destination that names its target without a
+  folder - an absolute URL, `/vault-root`, a bare `#fragment` - is untouched.
 
-Not covered yet, each with a follow-up issue: a plain relative link
-destination inside a child still resolves against the root document,
-go-to-definition on an include path, and export/copy of a flattened or bundled
-document.
+Not covered yet, each with a follow-up issue: go-to-definition on an include
+path, and export/copy of a flattened or bundled document.
 
 ## Install for development
 

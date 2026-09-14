@@ -22,3 +22,37 @@ export function rewriteWikiSyntax(source: string, base = ''): string {
     return bang ? `[Embedded: ${label}](${href}){.carve-embed data-carve-embed="${rebased}"}` : `[${label}](${href}){.carve-wikilink}`
   })
 }
+
+/**
+ * Vault path of the file a rendered link was WRITTEN in, when that is not the
+ * document it is displayed in. The reading view resolves the destination
+ * against this instead of the open file's own path.
+ */
+export const ORIGIN_ATTRIBUTE = 'data-carve-origin'
+
+/**
+ * True when `destination` is resolved against the folder of the file that
+ * wrote it. A scheme, a protocol-relative host, a vault-root `/` and a bare
+ * fragment each name their target without one, so the writing file is
+ * irrelevant to them.
+ */
+export function isFolderRelativeDestination(destination: string): boolean {
+  return destination !== '' && !/^(?:[a-z][a-z0-9+.-]*:|\/\/|\/|#)/i.test(destination)
+}
+
+/**
+ * Claim every link rendered into `root` for the file `origin` names.
+ *
+ * An origin the document wrote itself is dropped first, on every path: the
+ * attribute states where content was pulled in FROM, so a document that
+ * asserts it would otherwise redirect where a click lands. The AST pass does
+ * the same for an expanded document; this is the guarantee for the plain
+ * render path, which never sees the tree.
+ */
+export function claimRenderedOrigins(root: ParentNode, origin: string): void {
+  for (const anchor of Array.from(root.querySelectorAll('a'))) {
+    anchor.removeAttribute(ORIGIN_ATTRIBUTE)
+    const href = anchor.getAttribute('href')
+    if (origin !== '' && href !== null && isFolderRelativeDestination(href)) anchor.setAttribute(ORIGIN_ATTRIBUTE, origin)
+  }
+}

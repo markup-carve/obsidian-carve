@@ -4,7 +4,7 @@ import { EditorView } from '@codemirror/view'
 import { FuzzySuggestModal, Modal, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
 import { CarveIndex } from './indexer'
 import { extractMetadata, headingsFromDocument, withCrvExtension, type CarveMetadata } from './metadata'
-import { renderCarve } from './render'
+import { ORIGIN_ATTRIBUTE, claimRenderedOrigins, renderCarve } from './render'
 import { IncludeCache, renderCarveWithIncludes, type IncludeDiagnostic, type VaultGateway } from './includes'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
@@ -519,6 +519,10 @@ export class CarveView extends TextFileView {
     if (expansion) this.drawDiagnostics(layout, expansion.diagnostics, expansion.suppressed)
     const article = layout.createEl('article', { cls: 'carve-document' })
     article.innerHTML = expansion ? expansion.html : renderCarve(this.source)
+    // The expanded path stamped origins from the tree, where the engine says
+    // each node came from. The plain path has no tree, so the open file claims
+    // every link - which is also what drops an origin the document wrote.
+    if (!expansion) claimRenderedOrigins(article, this.file?.path ?? '')
     this.decorateCallouts(article)
     await this.resolveEmbeds(article, this.file?.path ?? '', 0)
     if (serial !== this.renderSerial) return
@@ -573,6 +577,9 @@ export class CarveView extends TextFileView {
         box.createDiv({ cls: 'carve-embed-title', text: file.basename })
         const body = box.createDiv({ cls: 'carve-embed-body' })
         body.innerHTML = renderCarve(await this.app.vault.cachedRead(file))
+        // The body is another file's content displayed inside this document,
+        // so its relative links belong to that file, not to the open note.
+        claimRenderedOrigins(body, file.path)
         this.decorateCallouts(body)
         await this.resolveEmbeds(body, file.path, depth + 1)
       }
@@ -587,7 +594,10 @@ export class CarveView extends TextFileView {
       const href = anchor.getAttribute('href')
       if (!href || /^(?:https?:|mailto:|#)/.test(href)) return
       event.preventDefault()
-      void this.app.workspace.openLinkText(withCrvExtension(decodeURIComponent(href)), this.file?.path ?? '', false)
+      // Content pulled in from another file resolves against THAT file: an
+      // included child and an embedded note both carry their own origin.
+      const origin = anchor.getAttribute(ORIGIN_ATTRIBUTE)
+      void this.app.workspace.openLinkText(withCrvExtension(decodeURIComponent(href)), origin ?? this.file?.path ?? '', false)
     })
   }
 
