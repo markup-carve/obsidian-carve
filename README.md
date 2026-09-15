@@ -184,17 +184,35 @@ inlined, which is what `carve flatten` does at the command line.
 Both read their targets through the vault and derive the destination from the
 open file's own vault path, so the export is contained by construction.
 
-Two consequences are reported when the command finishes, because neither is
-visible in the result:
+Three consequences are reported when the command finishes, because none of them
+is visible in the result:
 
 - **The output is canonical Carve.** Parent and children both go through the
   writer, so formatting is normalized rather than preserved. What the author
   wrote is left alone in one respect that matters here: wiki syntax is not
-  rewritten, so a flattened document can be edited on in Obsidian.
+  rewritten into Carve links, so a flattened document can be edited on in
+  Obsidian.
 - **Colliding ids are renamed.** An explicit heading id or footnote label a
   child shares with the parent is suffixed (`intro-2`, spec I5) so the
   flattened file renders exactly like the expanded original. The count is
   reported rather than left to be found in a published page.
+- **A child's wikilinks are respelled from the vault root.** `[[Sibling]]`
+  written in `book/sub/child.crv` names `book/sub/Sibling`; sitting in
+  `book/root.flat.crv` the same text reads as `book/Sibling`. It becomes
+  `[[book/sub/Sibling|Sibling]]`, which is the file the child meant and the
+  label the child showed. It stays wiki syntax, so Obsidian's own renaming and
+  backlinks keep working on it.
+
+  The respelling is conditional, and the summary says how often it did not
+  happen. A target with no file beside the child that wrote it never resolved
+  folder-relative in the first place - the plugin found it by basename, vault
+  wide - so naming it from the child's folder would point it at a file that is
+  not there. Those are left exactly as written and counted, because those are
+  the links whose meaning the flattening quietly changes.
+
+  Only links are touched, never text that looks like one: the respelling walks
+  the expanded tree, where a code span and a fenced block are different nodes
+  from a run of text.
 
 Exporting a plain `.crv` from the file menu does **not** expand: writing a
 document back as Carve has to return the author's document (spec I15), which is

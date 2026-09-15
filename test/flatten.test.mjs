@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { carveToHtml, renderHtml, resolve } from '@markup-carve/carve'
-import { expandForPreview } from '../dist-test/includes.js'
+import { expandForPreview, renderCarveWithIncludes } from '../dist-test/includes.js'
+import { renderCarve as renderCarveSource } from '../dist-test/render.js'
 import { MAX_EXPORT_CANDIDATES, flattenDocument, flattenSummary, flattenedPath } from '../dist-test/flatten.js'
 
 /** A vault of `path -> source`, read through a gateway, as the plugin does. */
@@ -60,6 +61,66 @@ test("the author's wiki syntax survives flattening verbatim", async () => {
   assert.match(result.text, /\[\[Other\|Alias\]\]/)
   assert.match(result.text, /\[\[Sibling\]\]/)
   assert.doesNotMatch(result.text, /carve-wikilink/, 'the reading view rewrite must not reach a document the author keeps')
+  assert.equal(result.rebased, 0, 'a child in the parent\'s own folder spells its targets the same way the parent does')
+  assert.deepEqual(result.ambiguous, [], 'and it is not a limit worth reporting either')
+})
+
+test("a child's wikilink is respelled from the vault root, keeping its label", async () => {
+  const gateway = vault({ 'book/sub/child.crv': 'Child links to [[Sibling]].\n', 'book/sub/Sibling.crv': 'A sibling.\n' })
+  const result = await flattenDocument('Root links to [[Sibling]].\n\n{{ sub/child.crv }}\n', { sourcePath: 'book/root.crv', gateway })
+  assert.match(result.text, /Child links to \[\[book\/sub\/Sibling\|Sibling\]\]\./, 'the target names the file from the vault root, the label still reads Sibling')
+  assert.match(result.text, /Root links to \[\[Sibling\]\]\./, "the root's own target is already relative to the file that keeps it")
+  assert.equal(result.rebased, 1)
+  assert.deepEqual(result.ambiguous, [])
+})
+
+test('the embed, fragment and alias spellings each keep their parts', async () => {
+  const gateway = vault({
+    'book/sub/child.crv': 'See ![[Sibling]] and [[Sibling#part]] and [[Sibling|Named]].\n',
+    'book/sub/Sibling.crv': 'A sibling.\n',
+  })
+  const result = await flattenDocument('{{ sub/child.crv }}\n', { sourcePath: 'book/root.crv', gateway })
+  assert.match(result.text, /!\[\[book\/sub\/Sibling\|Sibling\]\]/, 'an embed stays an embed')
+  assert.match(result.text, /\[\[book\/sub\/Sibling#part\|Sibling\]\]/, 'the fragment survives and the label is the bare target')
+  assert.match(result.text, /\[\[book\/sub\/Sibling\|Named\]\]/, "an alias the author wrote is not replaced")
+  assert.equal(result.rebased, 3)
+})
+
+test('a target with no file beside the child is left alone and reported', async () => {
+  const gateway = vault({ 'book/sub/child.crv': 'Child links to [[Elsewhere]] and [[/Rooted]].\n' })
+  const result = await flattenDocument('{{ sub/child.crv }}\n', { sourcePath: 'book/root.crv', gateway })
+  assert.match(result.text, /\[\[Elsewhere\]\]/, 'respelling it would invent a path the vault does not have')
+  assert.match(result.text, /\[\[\/Rooted\]\]/, 'a vault-root target already names its file from the root')
+  assert.equal(result.rebased, 0)
+  assert.deepEqual(result.ambiguous, ['Elsewhere'], 'the vault-root spelling is not a limit, so it is not reported as one')
+})
+
+test('wiki syntax that is text rather than a link is not respelled', async () => {
+  const gateway = vault({
+    'book/sub/child.crv': 'Live [[Sibling]], span `[[Sibling]]`, fence:\n\n```\n[[Sibling]]\n```\n',
+    'book/sub/Sibling.crv': 'A sibling.\n',
+  })
+  const result = await flattenDocument('{{ sub/child.crv }}\n', { sourcePath: 'book/root.crv', gateway })
+  assert.match(result.text, /Live \[\[book\/sub\/Sibling\|Sibling\]\]/)
+  assert.match(result.text, /`\[\[Sibling\]\]`/, 'a code span is a different node type, so it is skipped structurally')
+  assert.match(result.text, /^\[\[Sibling\]\]$/m, 'a fenced line is not a link either')
+  assert.equal(result.rebased, 1, 'exactly the one live link')
+})
+
+test('the flattened document still renders the way the unflattened one previews', async () => {
+  const gateway = vault({ 'book/sub/child.crv': 'Child links to [[Sibling]].\n', 'book/sub/Sibling.crv': 'A sibling.\n' })
+  const source = 'Root.\n\n{{ sub/child.crv }}\n'
+  const options = { sourcePath: 'book/root.crv', gateway }
+  const flattened = await flattenDocument(source, options)
+  // The reading view rewrites wiki syntax on its way in, so the flattened file
+  // read back through the SAME path has to produce the preview's HTML. Only the
+  // origin stamp differs, and it has to: it says content was pulled in from
+  // another file, which is no longer true of a document that holds it outright.
+  const preview = await renderCarveWithIncludes(source, options)
+  const withoutOrigins = (html) => html.replace(/ data-carve-origin="[^"]*"/g, '')
+  assert.match(renderCarveSource(flattened.text), /<a href="book\/sub\/Sibling" class="carve-wikilink">Sibling<\/a>/,
+    'the rebased target resolves from the vault root and still reads as Sibling')
+  assert.equal(renderCarveSource(flattened.text), withoutOrigins(preview.html))
 })
 
 test('a target outside the vault is refused, reported, and left as text', async () => {
@@ -85,16 +146,19 @@ test('an exhausted name space refuses rather than looping', () => {
 })
 
 test('the summary states the normalization, and every count it has', () => {
-  const base = { text: '', diagnostics: [], suppressed: 0, renamed: 0, sources: [] }
+  const base = { text: '', diagnostics: [], suppressed: 0, renamed: 0, sources: [], rebased: 0, ambiguous: [] }
   assert.equal(flattenSummary(base, 'Copied.'), 'Copied. Canonical Carve, so formatting is normalized.')
   const loud = {
     ...base,
     diagnostics: [{ rule: 'include-heading-id-rename' }, { rule: 'include-footnote-rename' }, { rule: 'include-unresolved' }],
     renamed: 2,
+    rebased: 3,
+    ambiguous: ['Elsewhere'],
     suppressed: 4,
   }
   assert.equal(
     flattenSummary(loud, 'Exported x.crv.'),
-    'Exported x.crv. Canonical Carve, so formatting is normalized. 2 colliding ids renamed. 1 include warning. 4 further warnings not shown.',
+    'Exported x.crv. Canonical Carve, so formatting is normalized. 2 colliding ids renamed. 3 child wikilinks rebased.'
+      + ' 1 child wikilink left unrebased; each may resolve elsewhere now. 1 include warning. 4 further warnings not shown.',
   )
 })
