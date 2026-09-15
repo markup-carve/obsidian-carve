@@ -40,6 +40,21 @@ export interface PreviewExpansion {
    * in here too, so creating a previously-missing file invalidates the preview.
    */
   watchPaths: string[]
+  /**
+   * The subset of `watchPaths` that actually yielded bytes. A caller copying
+   * files needs the split; one re-rendering does not, which is why watching
+   * stays the wider set.
+   */
+  resolvedPaths: string[]
+  /**
+   * Targets refused for climbing out of the vault, as the directive spelled
+   * them and in the file that wrote them. Collected from the resolver rather
+   * than read back out of the diagnostics, which the engine caps: a caller
+   * that promises to name every refusal cannot get that list from a capped
+   * one. The same spelling in two files is two entries, because it is two
+   * targets.
+   */
+  deniedTargets: Array<{ file: string; path: string }>
 }
 
 export interface PreviewExpansionOptions {
@@ -232,6 +247,8 @@ export async function expandForPreview(source: string, options: PreviewExpansion
         diagnostics: classifyDiagnostics(result.warnings, denied),
         suppressed: result.suppressedWarnings,
         watchPaths: watchPathsOf(result.dependencies, attempted),
+        resolvedPaths: result.dependencies.filter((dependency) => dependency.resolved).map((dependency) => dependency.id),
+        deniedTargets: [...denied].map((key) => { const at = key.indexOf('\u0000'); return { file: key.slice(0, at), path: key.slice(at + 1) } }),
       }
     }
 

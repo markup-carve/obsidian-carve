@@ -8,6 +8,7 @@ import { ORIGIN_ATTRIBUTE, claimRenderedOrigins, originAt, renderCarve } from '.
 import { directiveSiteAt, includeNavigation } from './include-navigation'
 import { IncludeCache, renderCarveWithIncludes, type IncludeDiagnostic, type VaultGateway } from './includes'
 import { flattenDocument, flattenSummary, flattenedPath, type FlattenResult } from './flatten'
+import { bundleEntryPath, bundleManifest, bundlePath, bundleSummary, foldersFor, planBundle } from './bundle'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
@@ -606,6 +607,39 @@ export class CarveView extends TextFileView {
     new Notice(flattenSummary(result, `Exported ${destination}.`))
   }
 
+  /**
+   * Write the document and every file it includes into a folder beside it.
+   *
+   * The destination is derived from the open file's own vault path, like the
+   * flatten export, so containment is structural. Inside the folder each file
+   * keeps its VAULT path, which is what leaves every spelling of a directive
+   * working: the bundle is a small vault rather than a flat pile.
+   *
+   * Files are copied byte for byte. The whole point of a bundle over a
+   * flattened file is that the recipient gets a document they can keep
+   * editing, so nothing here normalizes or rewrites their notes.
+   */
+  async exportBundle(): Promise<void> {
+    const source = this.file?.path
+    if (!source) return
+    const folder = bundlePath(source, (path) => this.plugin.exists(path))
+    if (folder === null) { new Notice('Carve: no free name left for a bundle of this document.'); return }
+    const plan = await planBundle(this.getViewData(), { sourcePath: source, gateway: this.plugin.gateway, cache: this.plugin.includeCache })
+    try {
+      await this.plugin.makeFolder(folder)
+      for (const path of plan.files) {
+        const destination = bundleEntryPath(folder, path)
+        for (const inner of foldersFor(destination)) await this.plugin.makeFolder(inner)
+        // The open document may have unsaved edits, so its bytes come from the
+        // view rather than from disk; every other file is read through the same
+        // gateway the expansion read it through.
+        await this.app.vault.create(destination, path === source ? this.getViewData() : await this.plugin.gateway.read(path))
+      }
+      await this.app.vault.create(bundleEntryPath(folder, plan.manifest), bundleManifest(plan))
+    } catch { new Notice(`Carve: could not write the bundle into ${folder}.`); return }
+    new Notice(bundleSummary(plan, folder))
+  }
+
   /** True when a vault change touches a file this document included, or tried to. */
   includes(path: string): boolean { return this.watched.has(path) }
 
@@ -756,6 +790,15 @@ export default class CarvePlugin extends Plugin {
     },
   }
 
+  /** True when anything - file or folder - already occupies this vault path. */
+  exists(path: string): boolean { return this.app.vault.getAbstractFileByPath(normalizePath(path)) !== null }
+
+  /** Create a vault folder, treating one that is already there as success. */
+  async makeFolder(path: string): Promise<void> {
+    if (this.exists(path)) return
+    try { await this.app.vault.createFolder(normalizePath(path)) } catch { if (!this.exists(path)) throw new Error(`Could not create folder: ${path}`) }
+  }
+
   async onload(): Promise<void> {
     await this.loadSettings()
     this.addSettingTab(new CarveSettingTab(this.app, this))
@@ -770,6 +813,7 @@ export default class CarvePlugin extends Plugin {
     for (const [id, name, run] of [
       ['carve-copy-flattened', 'Copy as a single document', (view: CarveView) => view.copyFlattened()],
       ['carve-export-flattened', 'Export as a self-contained Carve file', (view: CarveView) => view.exportFlattened()],
+      ['carve-export-bundle', 'Export a bundle with every included file', (view: CarveView) => view.exportBundle()],
     ] as const) this.addCommand({ id, name, checkCallback: (checking) => { const view = this.app.workspace.getActiveViewOfType(CarveView); if (!view?.file) return false; if (!checking) void run(view); return true } })
   }
   onunload(): void { this.index.stop(); this.includeCache.clear() }
