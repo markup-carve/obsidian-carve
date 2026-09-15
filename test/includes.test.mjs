@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IncludeCache, MAX_CACHE_ENTRIES, classifyDiagnostics, expandForPreview, renderCarveWithIncludes, resolveVaultPath } from '../dist-test/includes.js'
 import { ORIGIN_ATTRIBUTE } from '../dist-test/render.js'
+import { carveToHtml } from '@markup-carve/carve'
 
 /** A vault of `path -> { source, mtime }`, counting reads. */
 function vault(files) {
@@ -28,6 +29,22 @@ test('a directive path resolves relative to the including document', () => {
   assert.equal(resolveVaultPath('../shared/glossary.crv', 'book/chapters/one.crv'), 'book/shared/glossary.crv')
   assert.equal(resolveVaultPath('/top.crv', 'book/chapters/one.crv'), 'top.crv')
   assert.equal(resolveVaultPath('child.crv', 'root.crv'), 'child.crv')
+})
+
+test('the vault is the containment root, so a filesystem-absolute path names a vault path', () => {
+  // "/" is Obsidian's spelling for the vault root, not the filesystem root.
+  // The path is not merely refused: it names a note inside the vault, and the
+  // only reach a target has is the gateway, which knows vault paths alone.
+  assert.equal(resolveVaultPath('/etc/passwd', 'book/root.crv'), 'etc/passwd')
+  assert.equal(resolveVaultPath('/Users/me/.ssh/id_rsa', 'root.crv'), 'Users/me/.ssh/id_rsa')
+})
+
+test('a filesystem path reaches the vault and nothing else', async () => {
+  const { gateway, reads } = vault({ 'etc/passwd': 'a note that happens to live here\n' })
+  const result = await expandForPreview('{{ /etc/passwd }}\n', { sourcePath: 'root.crv', gateway })
+  assert.deepEqual(reads, ['etc/passwd'])
+  assert.deepEqual(result.watchPaths, ['etc/passwd'])
+  assert.deepEqual(result.diagnostics, [])
 })
 
 test('a path that climbs out of the vault is refused', () => {
@@ -81,6 +98,17 @@ test('a target outside the vault is reported as a containment refusal', async ()
   assert.equal(result.diagnostics.length, 1)
   assert.equal(result.diagnostics[0].rule, 'include-containment')
   assert.match(result.diagnostics[0].message, /outside the vault/)
+})
+
+test('a chain deeper than the engine allows is refused, not silently truncated', async () => {
+  // The other denial classes reach the reader through the same pass-through,
+  // so this is the one that pins the pass-through itself: the plugin relabels
+  // a containment refusal and forwards every other rule as the engine wrote it.
+  const files = {}
+  for (let n = 0; n < 24; n++) files[`chain-${n}.crv`] = `level ${n}\n\n{{ chain-${n + 1}.crv }}\n`
+  const { gateway } = vault(files)
+  const result = await expandForPreview('{{ chain-0.crv }}\n', { sourcePath: 'root.crv', gateway, maxRounds: 40 })
+  assert.ok(result.diagnostics.some((d) => d.rule === 'include-depth'), JSON.stringify(result.diagnostics))
 })
 
 test('a cycle is reported rather than looping', async () => {
@@ -278,4 +306,83 @@ test('an origin a block in the root document wrote itself does not survive', asy
   const source = '{data-carve-origin="elsewhere.crv"}\nRoot para.\n\n{{ sub/child.crv }}\n'
   const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway })
   assert.doesNotMatch(result.html, /elsewhere.crv/)
+})
+
+test('the expanded path runs the same composition the plain path runs', async () => {
+  // `renderHtml` is only the last step of it: the extension transforms and the
+  // profile pass are skipped, so an expanded document would silently render
+  // with less applied to it than an unexpanded one. Today both paths read one
+  // options object with neither configured, which is why the divergence is
+  // invisible - so the lever is supplied here rather than waited for.
+  const stamp = {
+    name: 'stamp',
+    beforeRender(doc) {
+      doc.children.unshift({ type: 'paragraph', children: [{ type: 'text', value: 'STAMPED' }] })
+      return doc
+    },
+  }
+  const source = '# Title\n\nbody\n'
+  const options = { allowRawHtml: false, extensions: [stamp] }
+  const { gateway } = vault({})
+  const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options })
+  assert.match(result.html, /STAMPED/)
+  assert.equal(result.html, carveToHtml(source, options))
+})
+
+test('a parse-stage extension reaches the parse the expansion runs', async () => {
+  // `matchInline` has already had its chance by the time the renderer sees the
+  // extension, so handing it only to `renderDocument` leaves its own syntax as
+  // ordinary text. carve-js#1693 is the remaining half: a CHILD is still
+  // parsed without it, so the syntax applies to the parent only.
+  const atat = {
+    name: 'atat',
+    matchInline(text, pos) {
+      if (!text.startsWith('@@', pos)) return null
+      const end = text.indexOf('@@', pos + 2)
+      return end === -1 ? null : { node: { type: 'code', value: text.slice(pos + 2, end) }, end: end + 2 }
+    },
+  }
+  const { gateway } = vault({})
+  const options = { allowRawHtml: false, extensions: [atat] }
+  const result = await renderCarveWithIncludes('say @@hi@@ now\n', { sourcePath: 'root.crv', gateway, renderOptions: options })
+  assert.match(result.html, /<code>hi<\/code>/)
+})
+
+test('the heading-id policy is the one the caller configured', async () => {
+  // The resolve that assigns the ids runs HERE, before the seam's own, so a
+  // policy left off this call is a policy the seam can no longer apply. The
+  // second heading is what makes the assertion falsifiable: with one heading
+  // the seam's own resolve re-slugs the id and hides the omission, and with a
+  // collision the first resolve's ids are the ones that stick.
+  const source = '# Big Title\n\n# Big Title\n'
+  const { gateway } = vault({})
+  const options = { allowRawHtml: false, lowercaseHeadingIds: true }
+  const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options })
+  assert.equal(result.html, carveToHtml(source, options))
+})
+
+test('the preview renders HTML whatever target a caller asks for', async () => {
+  // The reading view inserts this as HTML. `PreviewRenderOptions` drops
+  // `target` so the question cannot be asked in TypeScript; this is the same
+  // guarantee for a caller that is not type-checked.
+  const { gateway } = vault({})
+  const result = await renderCarveWithIncludes('# T\n\nbody\n', { sourcePath: 'root.crv', gateway, renderOptions: { allowRawHtml: false, target: 'markdown' } })
+  assert.match(result.html, /<h1>T<\/h1>/)
+})
+
+const RAW_HTML_SOURCE = 'a `<b>x</b>`{=html} b\n'
+
+test('configuring an unrelated option does not turn raw HTML back on', async () => {
+  // The options object EXTENDS the module's defaults rather than replacing
+  // them: an object that omits `allowRawHtml` would otherwise re-enable
+  // vault-authored HTML by omission.
+  const { gateway } = vault({})
+  const result = await renderCarveWithIncludes(RAW_HTML_SOURCE, { sourcePath: 'root.crv', gateway, renderOptions: { lowercaseHeadingIds: true } })
+  assert.doesNotMatch(result.html, /<b>x<\/b>/)
+})
+
+test('raw HTML stays off even when a caller asks for it', async () => {
+  const { gateway } = vault({})
+  const result = await renderCarveWithIncludes(RAW_HTML_SOURCE, { sourcePath: 'root.crv', gateway, renderOptions: { allowRawHtml: true } })
+  assert.doesNotMatch(result.html, /<b>x<\/b>/)
 })

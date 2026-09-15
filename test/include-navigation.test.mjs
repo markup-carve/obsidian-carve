@@ -107,3 +107,22 @@ test('a cursor well past the directive is not', () => {
   const source = '{{ one.crv }} and prose.\n'
   assert.equal(directiveSiteAt(source, 20), null)
 })
+
+test('an astral character before a directive does not shift its span', () => {
+  // The engine's spans count CODEPOINTS; a CodeMirror offset counts UTF-16
+  // units. One emoji makes them differ by one unit, which would offer a span
+  // starting inside the preceding character.
+  const source = '\u{1F600}\u{1F600} {{ one.crv }}\n'
+  const site = directiveSiteAt(source, source.indexOf('{{') + 2)
+  assert.equal(site.path, 'one.crv')
+  assert.equal(source.slice(site.from, site.to), '{{ one.crv }}')
+})
+
+test('a cursor one unit before an astral-shifted directive offers nothing', () => {
+  // Exactly the offset an unconverted codepoint span would start at, so a
+  // directive offered here is one the cursor is not on.
+  const source = '\u{1F600} text {{ one.crv }}\n'
+  const start = source.indexOf('{{')
+  assert.equal(directiveSiteAt(source, start).path, 'one.crv')
+  assert.equal(directiveSiteAt(source, start - 1), null)
+})

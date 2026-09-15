@@ -2,18 +2,18 @@
  * Locating the include directive under a cursor, and deciding what opening it
  * should do.
  *
- * Recognition is deliberately fail-closed, and the engine is the authority for
- * it: a `{{ }}` token inside a code span or a fence is text, and the expander
- * never asks for it. Liveness is therefore decided PER OCCURRENCE - the one
- * token is rewritten to a sentinel path and expansion is run with a resolver
- * that reads nothing, so the question "would the preview expand THIS token"
- * is answered by the code that expands it. Asking only whether the path is
- * requested somewhere would make a fenced copy of a live directive navigable.
+ * The engine is the authority for recognition: a `{{ }}` token inside a code
+ * span, a fence or a malformed option list is text, and the expander never
+ * asks for it. `findDirectiveSites` visits exactly the blocks and inline
+ * containers the expander visits, so the gesture and the preview cannot
+ * disagree about which tokens are live.
  *
- * The engine's own directive recognizers would be the direct route, but the
- * package exports neither of them.
+ * This module used to answer that question itself - a `{{ ... }}` regex over
+ * the source, then one throwaway `expandIncludes` run per candidate with a
+ * sentinel path, to see whether the expander asked for it. That was correct
+ * and quadratic. The locator replaces both.
  */
-import { expandIncludes, parse } from '@markup-carve/carve'
+import { findDirectiveSites, parse, type DirectiveSite as EngineDirectiveSite } from '@markup-carve/carve'
 import { containmentMessage, resolveVaultPath, unresolvedMessage } from './includes.js'
 
 /** A live include directive, with UTF-16 offsets into the source. */
@@ -30,62 +30,36 @@ export type IncludeNavigation =
   | { kind: 'missing'; message: string }
 
 /**
- * Resolver calls allowed while collecting the live paths. Nothing is read, so
- * this bounds recognition work only; past it the later directives in a
- * document stop being navigable rather than anything misbehaving.
+ * Translate a codepoint offset into a UTF-16 one.
+ *
+ * `DirectiveSite.start` and `.end` count CODEPOINTS; every offset on this side
+ * - a CodeMirror selection head, a `String.prototype.slice` - counts UTF-16
+ * units. The two agree until a document holds one astral character, and from
+ * there every directive after it is off by one unit per emoji. A source with
+ * no high surrogate in it cannot differ, so the walk is skipped entirely.
  */
-export const MAX_RECOGNIZED_DIRECTIVES = 5000
-
-const CANDIDATE = /\{\{([^{}]*)\}\}/g
-
-/** A path this token could name, before the engine has ruled on it. */
-interface Candidate { path: string; from: number; to: number }
-
-/** A path no document would spell, so the probe cannot collide with a real one. */
-const PROBE_PATH = '__carve-include-probe__'
-
-function candidates(source: string): Candidate[] {
-  const found: Candidate[] = []
-  for (const match of source.matchAll(CANDIDATE)) {
-    const path = (match[1] ?? '').trim().split(/\s+/)[0] ?? ''
-    const from = match.index ?? 0
-    if (path) found.push({ path, from, to: from + match[0].length })
+function codepointToUtf16(source: string): (offset: number) => number {
+  if (!/[\uD800-\uDBFF]/.test(source)) return (offset) => offset
+  const units: number[] = []
+  for (let index = 0; index < source.length;) {
+    units.push(index)
+    index += (source.codePointAt(index) as number) > 0xffff ? 2 : 1
   }
-  return found
+  units.push(source.length)
+  return (offset) => units[Math.min(Math.max(offset, 0), units.length - 1)] as number
 }
 
-/** Paths the expander asks for, which is exactly the set that is live. */
-function requestedPaths(source: string): Set<string> {
-  const requested = new Set<string>()
-  expandIncludes(parse(source, { positions: true }), source, {
-    resolve: (path) => { requested.add(path); return null },
-    maxWarnings: 1,
-    maxResolverCalls: MAX_RECOGNIZED_DIRECTIVES,
-  })
-  return requested
-}
-
-/**
- * Whether the expander would resolve THIS token, established by giving it a
- * path nothing else in the document spells and asking whether that path is
- * requested.
- */
-function isLive(source: string, candidate: Candidate): boolean {
-  const token = source.slice(candidate.from, candidate.to).replace(candidate.path, PROBE_PATH)
-  return requestedPaths(source.slice(0, candidate.from) + token + source.slice(candidate.to)).has(PROBE_PATH)
+function siteOf(site: EngineDirectiveSite, toUtf16: (offset: number) => number): DirectiveSite {
+  return { path: site.directive.path, from: toUtf16(site.start), to: toUtf16(site.end) }
 }
 
 /** Every live include directive in `source`, in source order. */
 export function directiveSites(source: string): DirectiveSite[] {
   if (!source.includes('{{')) return []
-  const found = candidates(source)
+  const found = findDirectiveSites(parse(source, { positions: true }))
   if (!found.length) return []
-  // One cheap pass rules out every token whose path is nowhere live; the rest
-  // are probed one at a time, because a path can be live in one place and
-  // inside a fence in another.
-  const requested = requestedPaths(source)
-  return found.filter((candidate) => requested.has(candidate.path) && isLive(source, candidate))
-    .map(({ path, from, to }) => ({ path, from, to }))
+  const toUtf16 = codepointToUtf16(source)
+  return found.map((site) => siteOf(site, toUtf16))
 }
 
 /**
@@ -97,10 +71,10 @@ export function directiveSites(source: string): DirectiveSite[] {
  * wins over a neighbour that merely ends there.
  */
 export function directiveSiteAt(source: string, offset: number): DirectiveSite | null {
-  const found = candidates(source)
-  const hit = found.find((candidate) => offset >= candidate.from && offset < candidate.to)
-    ?? found.find((candidate) => offset === candidate.to)
-  return hit && isLive(source, hit) ? { path: hit.path, from: hit.from, to: hit.to } : null
+  const sites = directiveSites(source)
+  return sites.find((site) => offset >= site.from && offset < site.to)
+    ?? sites.find((site) => offset === site.to)
+    ?? null
 }
 
 /**

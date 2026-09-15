@@ -12,7 +12,7 @@
  * vault-relative and reaches the vault through the gateway, so the process
  * working directory is not merely rejected - it is unreachable.
  */
-import { expandIncludes, parse, renderHtml, resolve as resolveDocument, type Document, type IncludeDependency, type IncludeWarning } from '@markup-carve/carve'
+import { expandIncludes, parse, renderDocument, resolve as resolveDocument, type Document, type IncludeDependency, type IncludeWarning, type RenderDocumentOptions } from '@markup-carve/carve'
 import { ORIGIN_ATTRIBUTE, RENDER_OPTIONS, isFolderRelativeDestination, rewriteWikiSyntax } from './render.js'
 
 /** The vault, narrowed to what expansion needs, so tests need no Obsidian. */
@@ -56,7 +56,23 @@ export interface PreviewExpansionOptions {
    * markup has to survive it.
    */
   rewriteWiki?: boolean
+  /**
+   * Render options for the expanded document. Defaults to the ones the plain
+   * preview path uses, which is what keeps the two in step; a caller passes
+   * its own only to configure the extensions or the profile that BOTH paths
+   * would then be configured with.
+   *
+   * `target` is not among them. The reading view inserts the result as HTML,
+   * so a caller that could ask for Markdown here would get Markdown displayed
+   * as markup rather than an error. Neither is `allowRawHtml`: raw HTML is off
+   * for vault content on every path, and an options object that REPLACED the
+   * default rather than extending it would turn it back on by omission.
+   */
+  renderOptions?: PreviewRenderOptions
 }
+
+/** Render options a preview may carry: everything but the renderer to finish with. */
+export type PreviewRenderOptions = Omit<RenderDocumentOptions, 'target'>
 
 export const DEFAULT_MAX_ROUNDS = 20
 export const MAX_CACHE_ENTRIES = 128
@@ -179,6 +195,12 @@ export async function expandForPreview(source: string, options: PreviewExpansion
   // content is inlined the reading view only knows the ROOT document's path, so
   // an unrebased `[[Sibling]]` would open a note beside the root.
   const rewrite = (text: string, base: string): string => (options.rewriteWiki ?? true) ? rewriteWikiSyntax(text, base) : text
+  // `matchInline` and `matchBlock` are parse-stage: an extension handed to the
+  // renderer that never reached the parse adds no syntax, so its own markup
+  // stays ordinary text. carve-js#1693 is the other half - `expandIncludes`
+  // parses a CHILD without them - so an extension's syntax still applies to
+  // the parent only, which is why no production caller configures one yet.
+  const parseOptions = { positions: true as const, ...(options.renderOptions?.extensions ? { extensions: options.renderOptions.extensions } : {}) }
   const rewritten = rewrite(source, '')
   // A read that throws is not retried: without this the next round would ask
   // for it again and the loop would only end at the round cap.
@@ -188,7 +210,7 @@ export async function expandForPreview(source: string, options: PreviewExpansion
     const attempted = new Set<string>()
     const denied = new Set<string>()
     const pending = new Map<string, number>()
-    const result = expandIncludes(parse(rewritten, { positions: true }), rewritten, {
+    const result = expandIncludes(parse(rewritten, parseOptions), rewritten, {
       sourcePath,
       resolve: (path, context) => {
         const parent = context.stack[context.stack.length - 1] ?? sourcePath
@@ -266,10 +288,33 @@ export function stampIncludeOrigins(node: unknown, parentFile?: string): void {
   for (const value of Object.values(record as Record<string, unknown>)) if (Array.isArray(value)) for (const child of value) stampIncludeOrigins(child, file ?? parentFile)
 }
 
-/** Expand, then render the same way the plain preview path renders. */
+/**
+ * Expand, then render the same way the plain preview path renders.
+ *
+ * `renderDocument` is the engine's seam for a document the host already holds
+ * (carve-js#1677): it runs the composition the string entry points run -
+ * resolution, the extension transforms, the profile pass, the renderer - one
+ * step later. `renderHtml` ran only the last of those, so this path agreed
+ * with `carveToHtml` in `render.ts` only while there was no extension and no
+ * profile to lose. The equivalence this comment claims is now structural.
+ *
+ * Resolution is run once here as well, because the origin stamp needs the
+ * resolved tree (a reference link only carries its destination after it) and
+ * the seam does not expose that point. The seam then resolves again, which is
+ * NOT a no-op: the ids this call assigns are the ones that survive a
+ * collision, so the caller's heading-id policy has to be applied here rather
+ * than left to the seam. Byte-equality with the string entry point is what the
+ * tests pin, not an idempotence claim.
+ */
 export async function renderCarveWithIncludes(source: string, options: PreviewExpansionOptions): Promise<PreviewExpansion & { html: string }> {
   const expansion = await expandForPreview(source, options)
-  const resolved = resolveDocument(expansion.doc)
+  const renderOptions: PreviewRenderOptions = options.renderOptions ?? RENDER_OPTIONS
+  // The heading-id policy has to be the caller's HERE: this resolve is the one
+  // that assigns the ids, and the seam's own resolve is the no-op by then.
+  const resolved = resolveDocument(expansion.doc, {
+    ...(renderOptions.asciiHeadingIds !== undefined ? { asciiHeadingIds: renderOptions.asciiHeadingIds } : {}),
+    ...(renderOptions.lowercaseHeadingIds !== undefined ? { lowercaseHeadingIds: renderOptions.lowercaseHeadingIds } : {}),
+  })
   stampIncludeOrigins(resolved)
-  return { ...expansion, html: renderHtml(resolved, RENDER_OPTIONS) }
+  return { ...expansion, html: renderDocument(resolved, { ...renderOptions, ...RENDER_OPTIONS, target: 'html' }) }
 }
