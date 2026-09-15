@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IncludeCache, MAX_CACHE_ENTRIES, classifyDiagnostics, expandForPreview, renderCarveWithIncludes, resolveVaultPath } from '../dist-test/includes.js'
 import { ORIGIN_ATTRIBUTE } from '../dist-test/render.js'
-import { carveToHtml } from '@markup-carve/carve'
+import { carveToHtml, resolve as resolveDocument } from '@markup-carve/carve'
 
 /** A vault of `path -> { source, mtime }`, counting reads. */
 function vault(files) {
@@ -385,4 +385,71 @@ test('raw HTML stays off even when a caller asks for it', async () => {
   const { gateway } = vault({})
   const result = await renderCarveWithIncludes(RAW_HTML_SOURCE, { sourcePath: 'root.crv', gateway, renderOptions: { allowRawHtml: true } })
   assert.doesNotMatch(result.html, /<b>x<\/b>/)
+})
+
+/** Element names in `html` carrying an origin, in document order. */
+function originElements(html) {
+  return [...html.matchAll(/<(\w+)[^>]*data-carve-origin="([^"]*)"/g)].map((match) => `${match[1]}=${match[2]}`)
+}
+
+test('a block-level include marks the whole region, plain text included', async () => {
+  // The region is one attribute on the block, so a click anywhere inside it
+  // finds the origin by walking up - which is why plain text works here and
+  // not in the inline case below.
+  const { gateway } = vault({ 'book/sub/child.crv': 'inlined text\n' })
+  const result = await renderCarveWithIncludes('Before.\n\n{{ sub/child.crv }}\n\nAfter.\n', { sourcePath: 'book/root.crv', gateway })
+  assert.deepEqual(originElements(result.html), ['p=book/sub/child.crv'])
+})
+
+test('an inline include marks the elements the child produced', async () => {
+  // Not "nothing": the child's content is its own node and carries pos.file,
+  // so anything that renders as an element can hold the attribute.
+  const { gateway } = vault({ 'book/sub/child.crv': '_stressed_\n' })
+  const result = await renderCarveWithIncludes('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
+  assert.deepEqual(originElements(result.html), ['u=book/sub/child.crv'])
+})
+
+/** Every text node as `value|file`, in document order. */
+function textFiles(node, out = []) {
+  if (node === null || typeof node !== 'object') return out
+  if (node.type === 'text') out.push(`${node.value}|${node.pos?.file ?? '-'}`)
+  for (const value of Object.values(node)) if (Array.isArray(value)) for (const child of value) textFiles(child, out)
+  return out
+}
+
+test("an inline include's plain text IS attributed in the expanded tree", async () => {
+  // The half carve-js#1679 was closed on: the child's text is its own node and
+  // carries the file, rather than being merged into the parent's run.
+  const { gateway } = vault({ 'book/sub/child.crv': 'inlined text\n' })
+  const result = await expandForPreview('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
+  assert.deepEqual(textFiles(result.doc), ['Root |-', 'inlined text|book/sub/child.crv', ' tail.|-'])
+})
+
+test('resolution coalesces that run back into the parent, losing the attribution', async () => {
+  // And the half it was not: the tree that gets RENDERED is the resolved one,
+  // where the three runs are one run again and the file is gone. So the
+  // README's conclusion for plain text holds while its stated reason does not,
+  // and the reason matters - it is why an element-producing child survives.
+  const { gateway } = vault({ 'book/sub/child.crv': 'inlined text\n' })
+  const expanded = await expandForPreview('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
+  assert.deepEqual(textFiles(resolveDocument(expanded.doc)), ['Root inlined text tail.|-'])
+})
+
+test('an inline include contributing only plain text marks nothing in the HTML', async () => {
+  // And this is the real limit, the one the README has to state instead: a
+  // text node is not an element, so there is nothing to carry the attribute
+  // and nothing to jump from.
+  const { gateway } = vault({ 'book/sub/child.crv': 'inlined text\n' })
+  const result = await renderCarveWithIncludes('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
+  assert.match(result.html, /Root inlined text tail\./)
+  assert.deepEqual(originElements(result.html), [])
+})
+
+test('an inline directive naming block content is refused rather than expanded', async () => {
+  // An image on its own line is a block, so the directive stays literal and
+  // says why - it is not a silent case of "the gesture found nothing".
+  const { gateway } = vault({ 'book/sub/child.crv': '![alt](pic.png)\n' })
+  const result = await renderCarveWithIncludes('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
+  assert.match(result.html, /\{\{ sub\/child\.crv \}\}/)
+  assert.deepEqual(result.diagnostics.map((d) => d.rule), ['include-block-in-inline'])
 })

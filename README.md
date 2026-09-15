@@ -166,10 +166,38 @@ replacing each one with the file it names.
   agrees with the preview about that.
 - **Go back to the file inlined content came from.** In the reading view,
   ctrl/cmd-click inside expanded content - or click it and run the same
-  command - to open the file that wrote it. This covers a directive that
-  stands as its own block, which is the usual way to write one; a directive
-  expanded mid-sentence leaves no trace of its origin in the rendered
-  document, so there is nothing there to jump from.
+  command - to open the file that wrote it.
+
+  What that reaches depends on what the child contributed, not on how the
+  directive was spelled:
+
+  - **A directive standing as its own block** marks the whole region it
+    produced, so a click anywhere inside it jumps - a run of plain text
+    included. This is the usual way to write one.
+  - **A directive expanded mid-sentence** marks only what the child rendered
+    as an element: emphasis, strong, a code span, a footnote reference, a link
+    whose destination is relative to its own folder.
+  - **A mid-sentence directive whose child is only plain text** marks nothing,
+    and cannot. Its text is attributed while the document is being assembled,
+    but the pass that prepares the document for rendering merges it back into
+    the surrounding sentence, and a run of text has no element to carry the
+    mark.
+  - A link that names its target without a folder - an absolute URL,
+    `/vault-root`, a bare `#fragment` - is never marked, on any path, because
+    the file it was written in cannot change where it points. A child's
+    `[[Sibling]]` is not marked either: the reading view has already rebased it
+    against the child's folder, so it is the child's own link already.
+
+  **Which of the two gestures reaches a mark depends on whether it sits on a
+  link.** Ctrl/cmd-click is the link's own gesture wherever there is one: on a
+  marked link it opens that link's destination, resolved against the child
+  that wrote it. `Carve: Open the included file` is the one that always means
+  "go to the file this came from", so on a link or a footnote reference, click
+  it first and then run the command.
+
+  A mid-sentence directive whose target holds BLOCK content - an image on its
+  own line, a list, a table - is not expanded at all. It stays literal and
+  says so above the document, rather than half-expanding.
 
 ### Flatten: export and copy one self-contained document
 
