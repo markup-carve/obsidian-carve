@@ -273,10 +273,12 @@ export function stampIncludeOrigins(node: unknown, parentFile?: string): void {
     // differs from its parent's - so one attribute marks the region instead of
     // one per node inside it.
     //
-    // A directive expanded mid-sentence leaves no region to mark: the engine
-    // merges the child's text into the parent's text node and stamps no
-    // pos.file on it, so there is no provenance to carry and the reverse
-    // gesture covers block-level includes only.
+    // A directive expanded mid-sentence marks whatever the child rendered as
+    // an ELEMENT. A child contributing only plain text marks nothing, and not
+    // because the expansion failed to attribute it: `expandIncludes` gives the
+    // child's text its own node with pos.file, and `resolve()` coalesces that
+    // run back into the parent's (carve-js#1679 was measured before that pass
+    // and closed on the tree it produces, not the one rendered).
     const stamp = record.type === 'link'
       ? file !== undefined && !rewritten && typeof record.href === 'string' && isFolderRelativeDestination(record.href)
       : file !== undefined && file !== parentFile

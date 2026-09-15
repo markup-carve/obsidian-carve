@@ -69,3 +69,11 @@ test('content the open document wrote reports no origin', () => {
 test('nothing under the pointer reports no origin', () => {
   assert.equal(originAt(null), null)
 })
+
+test('the origin of a marked link is reachable from the link itself', () => {
+  // `Carve: Open the included file` asks this of whatever was last clicked, so
+  // a link the reading view marked answers with the file that wrote it - the
+  // ctrl/cmd-click on that same link belongs to the link instead.
+  const root = host(`<p>Root <a href="Other.crv" ${ORIGIN_ATTRIBUTE}="book/sub/child.crv">ref</a> tail.</p>`)
+  assert.equal(originAt(root.querySelector('a')), 'book/sub/child.crv')
+})
