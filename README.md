@@ -246,8 +246,42 @@ Exporting a plain `.crv` from the file menu does **not** expand: writing a
 document back as Carve has to return the author's document (spec I15), which is
 why flattening is a separate, named action.
 
-Not covered yet, each with a follow-up issue: exporting a bundle (the document
-plus every file it pulls in), and carrying the author's document on the
+### Bundle: the document plus every file it includes
+
+`Carve: Export a bundle with every included file` writes the open document and
+every file it pulls in into a folder beside it, as `name.bundle/`, stepping to
+`name.bundle-2/` rather than writing into one already there.
+
+This is the right shape for handing a document to someone who will keep
+editing it, which is where flattening is the wrong one: the bundle keeps the
+directives and the file boundaries, so the recipient gets a document rather
+than one long file.
+
+- **Files are copied exactly as written.** Nothing runs through the writer, so
+  there is no canonical-Carve reformatting, no renamed ids and no rebased
+  wikilinks. The directives that made those necessary when flattening are
+  still in place.
+- **Inside the bundle every file keeps its vault path.** The bundle is a small
+  vault rather than a flat pile, which is what leaves every spelling of a
+  directive working: a folder-relative path needs the folder structure, a
+  `/vault-root` path needs a root to be relative to, and `..` needs whatever
+  it climbs to.
+- **A target with no bytes is named, not dropped.** One that could not be read
+  and one refused for sitting outside the vault are both part of the
+  dependency set and neither has anything to copy, so both are listed in
+  `carve-bundle.json` at the root of the bundle and counted in the summary. A
+  bundle that quietly left them out would look complete. The manifest steps to
+  the next free name if a copied file already occupies that path, and the
+  refused targets are collected as they are refused rather than read back out
+  of the warnings, which the engine caps.
+- The open document's own bytes come from the editor, so a bundle of a
+  document with unsaved edits carries what you are looking at.
+
+A folder rather than a zip: Obsidian ships no zip writer, so a zip would mean
+bundling one for an artifact that is browsable either way, and inside a vault a
+folder is already the thing you can open, search and hand over.
+
+Not covered yet, with a follow-up issue: carrying the author's document on the
 clipboard alongside the flattened text under a Carve-specific type.
 
 ## Security and scope
