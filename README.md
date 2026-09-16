@@ -205,6 +205,7 @@ Two commands write the open document back out as Carve with every include
 inlined, which is what `carve flatten` does at the command line.
 
 - `Carve: Copy as a single document` puts the flattened text on the clipboard.
+  On desktop the author's document goes alongside it, as described below.
 - `Carve: Export as a self-contained Carve file` writes it into the vault
   beside the original, as `name.flat.crv`, stepping to `name.flat-2.crv` rather
   than overwriting a file already there.
@@ -281,8 +282,26 @@ A folder rather than a zip: Obsidian ships no zip writer, so a zip would mean
 bundling one for an artifact that is browsable either way, and inside a vault a
 folder is already the thing you can open, search and hand over.
 
-Not covered yet, with a follow-up issue: carrying the author's document on the
-clipboard alongside the flattened text under a Carve-specific type.
+### Copy and paste between Carve editors
+
+On desktop, `Carve: Copy as a single document` writes two things:
+
+- `text/plain` gets the flattened document, so a paste into anything else is
+  complete on its own.
+- `web text/x-carve` gets the author's document with its include directives
+  intact. Each relative directive is respelled from the vault root, so
+  `{{ sub/child.crv }}` copied from `book/root.crv` becomes
+  `{{ /book/sub/child.crv }}` and still names the same file after a paste into
+  another folder. Across vaults it names whatever sits at that path.
+
+Pasting into the Source or Live split editor inserts the author's document when
+the clipboard carries one, and the plain text otherwise. The Visual editor
+still pastes plain text or HTML.
+
+On mobile the clipboard carries plain text only, so the copy writes the
+flattened text and a paste inserts plain text. If the desktop clipboard refuses
+the Carve type, the copy falls back the same way and the notice says it copied
+plain text only.
 
 ## Security and scope
 
