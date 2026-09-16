@@ -1,12 +1,13 @@
 import { basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { FuzzySuggestModal, Modal, Notice, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
+import { FuzzySuggestModal, Modal, Notice, Platform, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
 import { CarveIndex } from './indexer'
 import { extractMetadata, headingsFromDocument, withCrvExtension, type CarveMetadata } from './metadata'
 import { ORIGIN_ATTRIBUTE, claimRenderedOrigins, originAt, renderCarve } from './render'
 import { directiveSiteAt, includeNavigation } from './include-navigation'
 import { IncludeCache, renderCarveWithIncludes, type IncludeDiagnostic, type VaultGateway } from './includes'
+import { carveClipboardPaste, carveClipboardPayload, writeCarveClipboard } from './clipboard'
 import { flattenDocument, flattenSummary, flattenedPath, type FlattenResult } from './flatten'
 import { bundleEntryPath, bundleManifest, bundlePath, bundleSummary, foldersFor, planBundle } from './bundle'
 import { carveHighlighting, carveLanguage } from './syntax'
@@ -123,6 +124,7 @@ export class CarveView extends TextFileView {
           const target = this.plugin.app.metadataCache.getFirstLinkpathDest(destination, this.file?.path ?? '')
           return target ? this.plugin.app.vault.getResourcePath(target) : null
         })]), carveEditorCommands, EditorView.lineWrapping,
+          ...(Platform.isMobile ? [] : [carveClipboardPaste(() => navigator.clipboard)]),
           // Ctrl/cmd-click on an include directive opens the file it names,
           // the same gesture Obsidian uses for a link.
           EditorView.domEventHandlers({
@@ -576,17 +578,22 @@ export class CarveView extends TextFileView {
   }
 
   /**
-   * Put the flattened document on the clipboard, as `text/plain`.
-   *
-   * A clipboard can carry the author's document with its directives intact
-   * under a Carve-specific type at the same time (issue 25), which needs a
-   * format name agreed with the other editor integrations first.
+   * Put the flattened document on the clipboard as `text/plain`, and the
+   * author's document beside it under the Carve type where the platform
+   * carries one. Mobile gets the plain text only.
    */
   async copyFlattened(): Promise<void> {
+    const path = this.file?.path
+    const source = this.getViewData()
     const result = await this.flatten()
-    if (!result) return
-    try { await navigator.clipboard.writeText(result.text) } catch { new Notice('Carve: the clipboard refused the flattened document.'); return }
-    new Notice(flattenSummary(result, 'Copied as a single document.'))
+    if (!result || !path) return
+    const payload = carveClipboardPayload(source, path, result.text)
+    let copied: 'carve' | 'plain'
+    try {
+      copied = await writeCarveClipboard(navigator.clipboard, payload, { rich: !Platform.isMobile, ClipboardItem: globalThis.ClipboardItem })
+    } catch { new Notice('Carve: the clipboard refused the flattened document.'); return }
+    const lead = copied === 'plain' && !Platform.isMobile ? 'Copied as a single document, as plain text only.' : 'Copied as a single document.'
+    new Notice(flattenSummary(result, lead))
   }
 
   /**
