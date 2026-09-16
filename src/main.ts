@@ -12,6 +12,7 @@ import { flattenDocument, flattenSummary, flattenedPath, type FlattenResult } fr
 import { bundleEntryPath, bundleManifest, bundlePath, bundleSummary, foldersFor, planBundle } from './bundle'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
+import { decorateLanguageDiffs } from './diff'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
 import { appendOpaqueConstruct, editOpaqueWithPrompts, opaqueBlock, renderOpaqueConstruct, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource, type OpaqueConstruct } from './wysiwyg'
 import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureCellPlaceholder, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, tableCellRectangle, tableCellsToTsv, toggleTableHeader, toggleTableHeaderAxis } from './visual-table'
@@ -540,6 +541,7 @@ export class CarveView extends TextFileView {
     if (expansion) this.drawDiagnostics(layout, expansion.diagnostics, expansion.suppressed)
     const article = layout.createEl('article', { cls: 'carve-document' })
     article.innerHTML = expansion ? expansion.html : renderCarve(this.source)
+    decorateLanguageDiffs(article)
     // The expanded path stamped origins from the tree, where the engine says
     // each node came from. The plain path has no tree, so the open file claims
     // every link - which is also what drops an origin the document wrote.

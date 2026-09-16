@@ -9,6 +9,12 @@
 .carve-preview { padding: var(--file-margins); }
 .carve-reading-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(11rem, 15rem); gap: 2rem; max-width: var(--file-line-width); margin: 0 auto; }
 .carve-document { min-width: 0; }
+.carve-document pre.has-diff .line { display: block; min-height: 1lh; }
+.carve-document pre.has-diff .line.diff.add { background: rgba(var(--color-green-rgb), .15); }
+.carve-document pre.has-diff .line.diff.remove { background: rgba(var(--color-red-rgb), .15); }
+.carve-document pre.has-diff .diff-marker { display: inline-block; width: 1ch; font-weight: var(--font-semibold); }
+.carve-document pre.has-diff .line.diff.add .diff-marker { color: var(--color-green); }
+.carve-document pre.has-diff .line.diff.remove .diff-marker { color: var(--color-red); }
 .carve-inspector { border-left: 1px solid var(--background-modifier-border); padding-left: 1rem; font-size: var(--font-ui-small); }
 .carve-inspector h3 { margin: 1rem 0 .45rem; color: var(--text-muted); font-size: var(--font-ui-smaller); text-transform: uppercase; letter-spacing: .04em; }
 .carve-inspector dl { display: grid; grid-template-columns: auto 1fr; gap: .25rem .65rem; margin: 0; }
