@@ -1,6 +1,7 @@
 import { type EditorMappedNode, type EditorSession, createEditorSession } from '@markup-carve/carve'
 import { type Extension, type SelectionRange } from '@codemirror/state'
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from '@codemirror/view'
+import { substitutionBounds } from './substitution.js'
 
 export type LivePresentation =
   | { kind: 'heading'; from: number; to: number; level: number }
@@ -205,12 +206,7 @@ export function livePresentations(
       continue
     }
     if (node.type === 'substitution') {
-      const substitution = /^\{~([\s\S]*)~>([\s\S]*)~\}$/.exec(authored)
-      if (!substitution) continue
-      const oldStart = node.start + 2
-      const oldEnd = oldStart + substitution[1]!.length
-      const newStart = oldEnd + 2
-      const newEnd = newStart + substitution[2]!.length
+      const { oldStart, oldEnd, newStart, newEnd } = substitutionBounds(nodes, node)
       presentations.push({ kind: 'hide', from: node.start, to: oldStart })
       presentations.push({ kind: 'mark', from: oldStart, to: oldEnd, className: 'carve-live-delete' })
       presentations.push({ kind: 'hide', from: oldEnd, to: newStart })

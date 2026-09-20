@@ -417,12 +417,14 @@ function textFiles(node, out = []) {
   return out
 }
 
-test("an inline include's plain text IS attributed in the expanded tree", async () => {
-  // The half carve-js#1679 was closed on: the child's text is its own node and
-  // carries the file, rather than being merged into the parent's run.
+test("an inline include's plain text is merged into the host's run when it is expanded", async () => {
+  // carve-js#1679 gave the child's text its own node carrying the file.
+  // carve-js#1739 coalesces that run back into the host's, and #1741 keeps the
+  // host's span on the merged result, so the attribution is gone one stage
+  // earlier than it used to be - at expansion rather than at resolution.
   const { gateway } = vault({ 'book/sub/child.crv': 'inlined text\n' })
   const result = await expandForPreview('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
-  assert.deepEqual(textFiles(result.doc), ['Root |-', 'inlined text|book/sub/child.crv', ' tail.|-'])
+  assert.deepEqual(textFiles(result.doc), ['Root inlined text tail.|-'])
 })
 
 test('resolution coalesces that run back into the parent, losing the attribution', async () => {
