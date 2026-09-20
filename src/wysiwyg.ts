@@ -1,5 +1,6 @@
 import { carveToAstJson, createEditorSession, htmlToCarve } from '@markup-carve/carve'
 import { renderCarve } from './render.js'
+import { substitutionHalves } from './substitution.js'
 
 export interface VisualDocument {
   frontmatter: string
@@ -69,8 +70,8 @@ export function editOpaqueWithPrompts(item: OpaqueConstruct, prompt: OpaquePromp
     if (match) { const value = prompt('Raw value', match[1]!); if (value === null) return null; const format = prompt('Raw format', match[2]!); return format === null ? null : `\`${value}\`{=${format}}` }
   }
   if (item.kind === 'substitution') {
-    const match = /^\{~([\s\S]*)~>([\s\S]*)~\}$/.exec(item.source)
-    if (match) { const old = prompt('Original text', match[1]!); if (old === null) return null; const next = prompt('Replacement text', match[2]!); return next === null ? null : `{~${old}~>${next}~}` }
+    const halves = substitutionHalves(item.source)
+    if (halves) { const old = prompt('Original text', halves.old); if (old === null) return null; const next = prompt('Replacement text', halves.new); return next === null ? null : `{~${old}~>${next}~}` }
   }
   const critic: Record<string, [string, string, string]> = { insert: ['Inserted text', '{+', '+}'], delete: ['Deleted text', '{-', '-}'], critic_comment: ['Review comment', '{#', '#}'], comment: ['Comment', '{%', '%}'] }
   const criticShape = critic[item.kind]

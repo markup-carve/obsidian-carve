@@ -157,3 +157,33 @@ test('Obsidian wikilinks and embeds become source-backed widgets', () => {
   assert.ok(shown.some((item) => item.kind === 'image' && item.destination === 'Picture'))
   assert.equal(livePresentations(source, [{ from: 8, to: 8 }]).some((item) => item.kind === 'widget' && item.className === 'carve-live-wikilink'), false)
 })
+
+test('a substitution splits at the first top-level arrow, not the last one anywhere', () => {
+  // carve#2083. The greedy scan this replaces took the last arrow in the pair.
+  const source = '{~a~>b~>c~}'
+  const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+  assert.deepEqual(shown.filter((item) => item.kind === 'mark').map((item) => [item.className, source.slice(item.from, item.to)]), [
+    ['carve-live-delete', 'a'],
+    ['carve-live-insert', 'b~>c'],
+  ])
+})
+
+test('a pair whose only arrow sits inside a code span is a strikethrough', () => {
+  const source = '{~a `x~>y` b~}'
+  const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+  assert.deepEqual(shown.filter((item) => item.className === 'carve-live-delete' || item.className === 'carve-live-insert'), [])
+})
+
+test('an empty half keeps the other half addressable', () => {
+  for (const [source, marks] of [
+    ['{~~>new~}', [['carve-live-insert', 'new']]],
+    ['{~old~>~}', [['carve-live-delete', 'old']]],
+  ]) {
+    const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+    assert.deepEqual(
+      shown.filter((item) => item.kind === 'mark' && item.from !== item.to).map((item) => [item.className, source.slice(item.from, item.to)]),
+      marks,
+      source,
+    )
+  }
+})
