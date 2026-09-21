@@ -20,7 +20,7 @@
     "@codemirror/view": "6.38.6",
     "@lezer/highlight": "^1.2.3",
     "@markup-carve/carve": "^0.1.7",
-    "@markup-carve/carve-grammars": "github:markup-carve/carve-grammars#2566a6b5",
+    "@markup-carve/carve-grammars": "^0.1.9",
     "codemirror": "^6.0.2",
     "smol-toml": "1.8.0",
     "yaml": "^2.9.0"
