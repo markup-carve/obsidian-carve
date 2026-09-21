@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.1
+
+- Expand `{{ path }}` include directives in the reading view, on by default.
+  The expanded document renders through the same extension pipeline as any
+  other, and a relative link in an included file resolves against that file's
+  folder (#20, #22, #30).
+- Open the file an include directive names with ctrl/cmd-click or
+  `Carve: Open the included file`, and open the file that expanded content came
+  from with the same gesture in the reading view (#23).
+- Export or copy a document with every include expanded, or export a bundle
+  folder holding the document and every file it includes. Wikilinks from an
+  included file are rebased where the rewrite is unambiguous (#27, #28, #32).
+- Copying a single document also puts the author's own document on the
+  clipboard as `web text/x-carve`, and pasting it back into a Carve editor
+  inserts that version (#33).
+- Show `{.diff}` language fences with added and removed lines in reading and
+  split previews (#34).
+- Split a substitution at the arrow the engine splits it at, instead of the
+  last arrow anywhere in the pair. The plugin now runs on the released Carve
+  engine 0.1.7, which drops an all-empty table row on import with a
+  diagnostic (#36).
+
 ## 0.1.0
 
 First release. The plugin registers `.crv` as its own Obsidian view with four
