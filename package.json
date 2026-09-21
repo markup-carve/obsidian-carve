@@ -1,6 +1,6 @@
 {
   "name": "obsidian-carve",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Carve markup editor and reading view for Obsidian",
   "license": "MIT",
   "author": "Mark Scherer",
