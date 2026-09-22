@@ -80,9 +80,9 @@ jobs:
 
       # The release for this tag usually already exists as a draft holding the
       # notes, so `gh release create` would fail on it. Upload onto whatever is
-      # there and create one only when there is nothing. Either way the release
-      # is left in the state the maintainer put it in: this never flips a draft
-      # to published, so publishing stays a human action.
+      # there and create one only when there is nothing. This step never flips
+      # a draft to published; the last step in the job does that, once the
+      # assets are verified.
       - name: Attach main.js, manifest.json, and styles.css
         env:
           GH_TOKEN: ${{ github.token }}
@@ -113,3 +113,34 @@ jobs:
             esac
           done
           exit $missing
+
+      # A registry publish is not finished until the release page exists. The
+      # tag is pushed, CI publishes, the registry answers 200, and "released"
+      # feels done - while `/releases` still shows a draft, so a reader has no
+      # notes and no changelog for the version they just installed. Doing it
+      # here rather than by hand also means the draft stops being a thing
+      # someone has to remember to publish at the right moment.
+      #
+      # Last, deliberately: a draft that stays a draft is recoverable, and one
+      # published beside a failed publish is not.
+      - name: Publish the release notes
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq "[.[] | select(.tag_name == \"$GITHUB_REF_NAME\" and .draft)] | first | .id // empty")"
+          if [ -z "$id" ]; then
+            echo "No draft release for $GITHUB_REF_NAME; nothing to publish."
+            exit 0
+          fi
+          # `tag_name` goes with every PATCH of a release. Omit it on a DRAFT
+          # and GitHub replaces the tag with a generated `untagged-*`
+          # placeholder, because a draft's tag is a string on the object rather
+          # than a git ref - so the field has nothing to fall back to.
+          # `-F` (not `-f`) for draft, so it is sent as a boolean.
+          gh api "repos/$GITHUB_REPOSITORY/releases/$id" -X PATCH \
+            -f tag_name="$GITHUB_REF_NAME" -F draft=false --jq '"published \(.tag_name)"'
+          # Read it back: exit status does not tell you whether the tag survived.
+          gh api "repos/$GITHUB_REPOSITORY/releases/$id" \
+            --jq '"draft=\(.draft) tag=\(.tag_name)"'
