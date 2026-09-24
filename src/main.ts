@@ -1,7 +1,7 @@
 import { basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { FuzzySuggestModal, Modal, Notice, Platform, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
+import { FuzzySuggestModal, Modal, Notice, Platform, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, loadPrism, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
 import { CarveIndex } from './indexer'
 import { extractMetadata, headingsFromDocument, withCrvExtension, type CarveMetadata } from './metadata'
 import { ORIGIN_ATTRIBUTE, claimRenderedOrigins, originAt, renderCarve } from './render'
@@ -12,7 +12,7 @@ import { flattenDocument, flattenSummary, flattenedPath, type FlattenResult } fr
 import { bundleEntryPath, bundleManifest, bundlePath, bundleSummary, foldersFor, planBundle } from './bundle'
 import { carveHighlighting, carveLanguage } from './syntax'
 import { createCarveLivePreview } from './live-preview'
-import { decorateLanguageDiffs } from './diff'
+import { highlightCodeBlocks, withCarveGrammar, type Prism } from './highlight'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
 import { appendOpaqueConstruct, editOpaqueWithPrompts, opaqueBlock, renderOpaqueConstruct, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource, type OpaqueConstruct } from './wysiwyg'
 import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureCellPlaceholder, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, tableCellRectangle, tableCellsToTsv, toggleTableHeader, toggleTableHeaderAxis } from './visual-table'
@@ -541,14 +541,15 @@ export class CarveView extends TextFileView {
     if (expansion) this.drawDiagnostics(layout, expansion.diagnostics, expansion.suppressed)
     const article = layout.createEl('article', { cls: 'carve-document' })
     article.innerHTML = expansion ? expansion.html : renderCarve(this.source)
-    decorateLanguageDiffs(article)
     // The expanded path stamped origins from the tree, where the engine says
     // each node came from. The plain path has no tree, so the open file claims
     // every link - which is also what drops an origin the document wrote.
     if (!expansion) claimRenderedOrigins(article, this.file?.path ?? '')
     this.decorateCallouts(article)
     await this.resolveEmbeds(article, this.file?.path ?? '', 0)
+    const prism = await this.plugin.prism()
     if (serial !== this.renderSerial) return
+    highlightCodeBlocks(article, prism)
     this.wireLinks(article)
     // The outline pairs headings with rendered elements by index, so an
     // expanded document has to report the headings its children contributed.
@@ -782,6 +783,12 @@ export default class CarvePlugin extends Plugin {
   index = new CarveIndex(this.app)
   settings: CarveSettings = { includes: { ...DEFAULT_SETTINGS.includes } }
   includeCache = new IncludeCache()
+  private prismLoad: Promise<Prism | null> | null = null
+  /** Obsidian's own Prism with the Carve grammar added; null when it cannot load, so code stays plain. */
+  prism(): Promise<Prism | null> {
+    this.prismLoad ??= loadPrism().then((prism: Prism) => withCarveGrammar(prism)).catch(() => null)
+    return this.prismLoad
+  }
   /**
    * Include targets are read through the vault, never through `node:fs`, so
    * the containment root is the vault and the process working directory is

@@ -14,7 +14,9 @@ Community plugins settings.
 
 The plugin registers `.crv` as its own Obsidian view and provides four modes:
 
-- **Reading** renders the document with `@markup-carve/carve`.
+- **Reading** renders the document with `@markup-carve/carve` and highlights
+  code blocks with Obsidian's bundled Prism, including `carve`/`crv` fences
+  (carve-grammars' Prism grammar) and the lines of a `{.diff}` fence.
 - **Source** uses a full CodeMirror 6 editor with Carve highlighting, line
   numbers, search, history, selections, standard editing keys, and semantic
   Live Preview. Authored markers hide away from the cursor and reappear exactly

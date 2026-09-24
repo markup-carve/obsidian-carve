@@ -16,7 +16,8 @@ The plugin works on mobile and uses no Node or Electron APIs.
 
 The plugin registers `.crv` as its own view and provides four modes:
 
-- **Reading** renders the document with `@markup-carve/carve`.
+- **Reading** renders the document with `@markup-carve/carve` and highlights
+  code blocks, `carve` fences included, with Obsidian's Prism.
 - **Source** uses CodeMirror 6 with highlighting, search, history, and semantic
   Live Preview.
 - **Live split** keeps source and rendered output side by side.
