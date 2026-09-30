@@ -53,10 +53,11 @@ jobs:
           node-version: 22
           cache: npm
 
-      # package-lock.json resolves the carve engine as git+ssh, and npm only
-      # reaches it on a runner because it falls back to HTTPS on its own. CI
-      # installs fine without this, but a release must not rest on that
-      # fallback. Both lines write the SAME config key, so both need --add:
+      # The lockfile carries no git dependency any more: #37 moved the last
+      # one, carve-grammars, onto a registry tarball. This stays as a net for
+      # the next one, because a git+ssh entry installs on a runner only
+      # through npm's own fallback to HTTPS, and a release must not rest on
+      # that. Both lines write the SAME config key, so both need --add:
       # a plain set would replace the first rewrite with the second and leave
       # the ssh:// form uncovered.
       - name: Prefer HTTPS for Git dependencies

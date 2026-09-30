@@ -17,3 +17,16 @@ plugins.
 the plugin against the current Obsidian TypeScript API, and produces the
 bundled `main.js` artifact. The example is also exercised interactively in a
 disposable Obsidian vault before release.
+
+## Upstream drift
+
+`node scripts/check-upstream-drift.mjs` installs the ranges declared in
+`package.json` into a throwaway directory with no lockfile, then compares what
+npm picked against what `package-lock.json` pins. It exits non-zero on a
+disagreement and prints the `npm install` line that closes it. Point it at
+another lockfile with `DRIFT_LOCK` to reproduce a past state.
+
+The `Upstream drift` workflow runs it daily and on every pull request, and also
+runs `npm run test:all` against the freshly resolved tree. It is advisory:
+branch protection requires only the locked `test (20)` and `test (22)` from
+`ci.yml`, so an upstream release cannot block a merge here on its own.
