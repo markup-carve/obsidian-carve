@@ -21,10 +21,13 @@ on:
 permissions:
   contents: read
 
+# Every job below carries a timeout-minutes bound. Without one a job inherits
+# GitHub's 360-minute default, and a stalled step can burn hours unnoticed.
 jobs:
   floating-range:
     name: The declared ranges still resolve to the locked versions
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
