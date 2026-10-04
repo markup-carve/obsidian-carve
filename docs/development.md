@@ -27,11 +27,11 @@ disagreement and prints the `npm update --package-lock-only` line that closes
 it. Point it at another lockfile with `DRIFT_LOCK` to reproduce a past state.
 With `DRIFT_REPORT` set to a file it appends the drift there and exits zero.
 
-The `Upstream drift` workflow runs it daily and on every pull request, and also
-runs `npm run test:all` against the freshly resolved tree. It is advisory:
-branch protection requires only the locked `test (20)` and `test (22)` from
-`ci.yml`, so an upstream release cannot block a merge here on its own. On the
-schedule, drift opens or updates a lock-refresh pull request from
+The `Upstream drift` workflow runs it daily, not on pull requests, so an
+upstream release cannot block a merge here; pull requests are gated by the
+locked `test (20)` and `test (22)` from `ci.yml`. When nothing drifted, the
+scheduled run also runs `npm run test:all` against the freshly resolved tree.
+Drift opens or updates a lock-refresh pull request from
 `automation/revendor-lockfile` instead of failing the run. That needs the
 `BUMP_TOKEN` repository secret, a fine-grained token, because a pull request
 opened with the default token does not trigger CI.
