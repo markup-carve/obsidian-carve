@@ -9,6 +9,14 @@
 # It runs on pull requests as well as on the schedule, because a drift check
 # that only runs nightly is how helix-carve and zed-carve sat red on main for
 # a week with nobody looking.
+#
+# Upstream publishing is work, not a failure of this repo (carve#2706), so on
+# the schedule a lock behind the ranges opens or updates one lock-refresh pull
+# request and the run stays green; that pull request's CI runs the gates. The
+# scheduled run goes red only when the check cannot do its job: a package that
+# will not install, a missing BUMP_TOKEN, or a failed push. BUMP_TOKEN is a
+# fine-grained PAT because a pull request the default token opens does not
+# trigger CI. On a pull request the drift step still fails as before.
 name: Upstream drift
 
 on:
@@ -21,6 +29,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: upstream-drift-${{ github.ref }}
+  cancel-in-progress: false
+
 # Every job below carries a timeout-minutes bound. Without one a job inherits
 # GitHub's 360-minute default, and a stalled step can burn hours unnoticed.
 jobs:
@@ -30,6 +42,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -40,13 +54,95 @@ jobs:
       # with no lockfile at all, and reads the resolved version out of each
       # installed package rather than out of any lock.
       - name: Resolve the declared ranges with no lockfile
-        run: node scripts/check-upstream-drift.mjs
+        id: drift
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "${EVENT}" = pull_request ]; then
+            node scripts/check-upstream-drift.mjs
+          else
+            DRIFT_REPORT="$GITHUB_OUTPUT" node scripts/check-upstream-drift.mjs
+          fi
+
+      - name: Open or update the lock-refresh pull request
+        if: github.event_name != 'pull_request' && steps.drift.outputs.drifted != '0'
+        env:
+          GH_TOKEN: ${{ secrets.BUMP_TOKEN }}
+          REPO: ${{ github.repository }}
+          NAMES: ${{ steps.drift.outputs.names }}
+          TARGETS: ${{ steps.drift.outputs.targets }}
+          MOVES: ${{ steps.drift.outputs.moves }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::BUMP_TOKEN is not set, so the drift job cannot open the lock-refresh pull request"
+            exit 1
+          fi
+          # The refresh branch is cut from the checkout, so only the default branch may feed it.
+          if [ "${GITHUB_REF_NAME}" != "${BASE}" ]; then
+            echo "Dispatched on ${GITHUB_REF_NAME}, not ${BASE}; reporting only."
+            exit 0
+          fi
+          branch=automation/revendor-lockfile
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          pr="$(gh pr list --repo "${REPO}" --head "${branch}" --state open --json number --jq '.[0].number // empty')"
+
+          # An open pull request already locking these versions needs nothing;
+          # pushing again would only restart its CI.
+          if [ -n "${pr}" ] && git ls-remote --exit-code "${remote}" "refs/heads/${branch}" >/dev/null; then
+            git fetch -q "${remote}" "${branch}"
+            if git show FETCH_HEAD:package-lock.json | node -e '
+              const lock = JSON.parse(require("fs").readFileSync(0, "utf8"));
+              const ok = process.argv.slice(1).every((t) => {
+                const at = t.lastIndexOf("@");
+                return lock.packages["node_modules/" + t.slice(0, at)]?.version === t.slice(at + 1);
+              });
+              process.exit(ok ? 0 : 1);
+            ' ${TARGETS}; then
+              echo "${branch} already locks ${TARGETS}; nothing to do."
+              exit 0
+            fi
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q -B "${branch}"
+          # Moves the lock inside the declared ranges; package.json stays as it is.
+          npm update --package-lock-only --no-audit --no-fund ${NAMES}
+          title="chore: lock ${TARGETS// /, }"
+          git commit -q -am "${title}"
+          git push -q --force "${remote}" "${branch}"
+
+          tick='`'
+          {
+            echo "Refreshes ${tick}package-lock.json${tick} to what the declared ranges resolve to today: ${MOVES}."
+            echo
+            echo "Opened by the scheduled upstream-drift job. ${tick}package.json${tick} is unchanged. CI runs the tests, the type check and the build against the new lock, so a red run here means an upstream release inside a declared range breaks this plugin."
+            echo
+            echo "Upstream versions:"
+            echo
+            for name in ${NAMES}; do
+              echo "- https://www.npmjs.com/package/${name}?activeTab=versions"
+            done
+          } > "${RUNNER_TEMP}/body.md"
+
+          if [ -n "${pr}" ]; then
+            gh pr edit "${pr}" --repo "${REPO}" --title "${title}" --body-file "${RUNNER_TEMP}/body.md"
+            echo "Updated #${pr}."
+          else
+            gh pr create --repo "${REPO}" --base "${BASE}" --head "${branch}" \
+              --title "${title}" --body-file "${RUNNER_TEMP}/body.md" \
+              --label chore --label area:tooling
+          fi
 
       # Drift is only half the question. This runs the same gate ci.yml runs,
       # against the versions a fresh install actually gets, so an upstream
       # release that breaks this plugin shows up as a failing test rather than
-      # as a version number nobody reads.
+      # as a version number nobody reads. When the schedule found drift, the
+      # lock-refresh pull request's CI runs these gates instead.
       - name: The gates pass against the freshly resolved tree
+        if: github.event_name == 'pull_request' || steps.drift.outputs.drifted == '0'
         run: |
           mv package-lock.json package-lock.reference.json
           npm install --no-audit --no-fund

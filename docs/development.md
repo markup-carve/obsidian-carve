@@ -23,10 +23,15 @@ disposable Obsidian vault before release.
 `node scripts/check-upstream-drift.mjs` installs the ranges declared in
 `package.json` into a throwaway directory with no lockfile, then compares what
 npm picked against what `package-lock.json` pins. It exits non-zero on a
-disagreement and prints the `npm install` line that closes it. Point it at
-another lockfile with `DRIFT_LOCK` to reproduce a past state.
+disagreement and prints the `npm update --package-lock-only` line that closes
+it. Point it at another lockfile with `DRIFT_LOCK` to reproduce a past state.
+With `DRIFT_REPORT` set to a file it appends the drift there and exits zero.
 
 The `Upstream drift` workflow runs it daily and on every pull request, and also
 runs `npm run test:all` against the freshly resolved tree. It is advisory:
 branch protection requires only the locked `test (20)` and `test (22)` from
-`ci.yml`, so an upstream release cannot block a merge here on its own.
+`ci.yml`, so an upstream release cannot block a merge here on its own. On the
+schedule, drift opens or updates a lock-refresh pull request from
+`automation/revendor-lockfile` instead of failing the run. That needs the
+`BUMP_TOKEN` repository secret, a fine-grained token, because a pull request
+opened with the default token does not trigger CI.
