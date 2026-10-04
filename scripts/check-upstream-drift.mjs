@@ -7,7 +7,7 @@
 // package's own package.json inside a throwaway tree that never saw a lock. A
 // check that derived both from one file could never disagree with itself.
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, copyFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, copyFileSync, readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,6 +86,24 @@ for (const item of behindRegistry) {
   );
 }
 
+// The scheduled job refreshes the lock instead of failing, so it asks for the
+// numbers. Pull requests leave DRIFT_REPORT unset and still fail on drift.
+if (process.env.DRIFT_REPORT) {
+  const missing = drift.filter((d) => d.resolved === 'not installed');
+  if (missing.length > 0) {
+    console.log(`::error::${missing.map((d) => d.name).join(', ')} did not install, so there is nothing to lock.`);
+    process.exit(1);
+  }
+  appendFileSync(
+    process.env.DRIFT_REPORT,
+    `drifted=${drift.length}\n` +
+      `names=${drift.map((d) => d.name).join(' ')}\n` +
+      `targets=${drift.map((d) => `${d.name}@${d.resolved}`).join(' ')}\n` +
+      `moves=${drift.map((d) => `${d.name} ${d.locked} -> ${d.resolved}`).join(', ')}\n`,
+  );
+  process.exit(0);
+}
+
 if (drift.length === 0) {
   console.log('No drift: every declared range resolves to the version the lockfile pins.');
   process.exit(0);
@@ -97,5 +115,5 @@ for (const item of drift) {
 }
 console.log('');
 console.log('Refresh the lockfile so the gates run against what a fresh install gets:');
-console.log(`  npm install ${drift.map((d) => d.name).join(' ')}`);
+console.log(`  npm update --package-lock-only ${drift.map((d) => d.name).join(' ')}`);
 process.exit(1);
