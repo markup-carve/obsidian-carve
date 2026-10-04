@@ -2,28 +2,22 @@
 # both run `npm ci`, which honors package-lock.json, so an upstream release is
 # invisible until someone moves the lock by hand.
 #
-# ADVISORY, deliberately. Branch protection on main requires exactly
-# `test (20)` and `test (22)` from ci.yml, and this job's contexts are not in
-# that list, so a red run here reports without blocking a merge. A floating
-# range that gates merges hands every upstream publish a veto over this repo.
-# It runs on pull requests as well as on the schedule, because a drift check
-# that only runs nightly is how helix-carve and zed-carve sat red on main for
-# a week with nobody looking.
+# Schedule only. A floating range checked on pull requests hands every
+# upstream publish a veto over unrelated changes here; ci.yml gates pull
+# requests against the locked tree.
 #
-# Upstream publishing is work, not a failure of this repo (carve#2706), so on
-# the schedule a lock behind the ranges opens or updates one lock-refresh pull
-# request and the run stays green; that pull request's CI runs the gates. The
-# scheduled run goes red only when the check cannot do its job: a package that
-# will not install, a missing BUMP_TOKEN, or a failed push. BUMP_TOKEN is a
-# fine-grained PAT because a pull request the default token opens does not
-# trigger CI. On a pull request the drift step still fails as before.
+# Upstream publishing is work, not a failure of this repo (carve#2706), so a
+# lock behind the ranges opens or updates one lock-refresh pull request and the
+# run stays green; that pull request's CI runs the gates. The run goes red only
+# when the check cannot do its job: a package that will not install, a missing
+# BUMP_TOKEN, a failed push, or the gates failing against a fresh tree that did
+# not drift. BUMP_TOKEN is a fine-grained PAT because a pull request the
+# default token opens does not trigger CI.
 name: Upstream drift
 
 on:
   schedule:
     - cron: '40 6 * * *'
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -55,18 +49,11 @@ jobs:
       # installed package rather than out of any lock.
       - name: Resolve the declared ranges with no lockfile
         id: drift
-        env:
-          EVENT: ${{ github.event_name }}
-        run: |
-          if [ "${EVENT}" = pull_request ]; then
-            node scripts/check-upstream-drift.mjs
-          else
-            DRIFT_REPORT="$GITHUB_OUTPUT" node scripts/check-upstream-drift.mjs
-          fi
+        run: DRIFT_REPORT="$GITHUB_OUTPUT" node scripts/check-upstream-drift.mjs
 
       - name: Open or update the lock-refresh pull request
         id: revendor
-        if: github.event_name != 'pull_request' && steps.drift.outputs.drifted != '0'
+        if: steps.drift.outputs.drifted != '0'
         env:
           GH_TOKEN: ${{ secrets.BUMP_TOKEN }}
           REPO: ${{ github.repository }}
@@ -137,12 +124,6 @@ jobs:
               --label chore --label area:tooling
           fi
 
-      # Drift is only half the question. This runs the same gate ci.yml runs,
-      # against the versions a fresh install actually gets, so an upstream
-      # release that breaks this plugin shows up as a failing test rather than
-      # as a version number nobody reads. When the schedule found drift, the
-      # lock-refresh pull request's CI runs these gates instead.
-
       # main requires its checks and an up-to-date branch, so auto-merge waits for
       # this repo's CI. GitHub never updates a BEHIND branch itself, so do it here.
       - name: Merge the re-vendor pull request once its checks pass
@@ -170,8 +151,11 @@ jobs:
           fi
           gh pr merge "${pr}" --repo "${REPO}" --squash --auto
           echo "Auto-merge (squash) enabled on #${pr}."
+
+      # With no drift, run ci.yml's gates against what a fresh install gets.
+      # With drift, the lock-refresh pull request's CI runs them instead.
       - name: The gates pass against the freshly resolved tree
-        if: github.event_name == 'pull_request' || steps.drift.outputs.drifted == '0'
+        if: steps.drift.outputs.drifted == '0'
         run: |
           mv package-lock.json package-lock.reference.json
           npm install --no-audit --no-fund

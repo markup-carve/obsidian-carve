@@ -87,7 +87,7 @@ for (const item of behindRegistry) {
 }
 
 // The scheduled job refreshes the lock instead of failing, so it asks for the
-// numbers. Pull requests leave DRIFT_REPORT unset and still fail on drift.
+// numbers. Run by hand without DRIFT_REPORT, the script fails on drift.
 if (process.env.DRIFT_REPORT) {
   const missing = drift.filter((d) => d.resolved === 'not installed');
   if (missing.length > 0) {
