@@ -3,7 +3,7 @@ import { tags } from '@lezer/highlight'
 
 interface CarveState { frontmatter: boolean; fence: string | null }
 
-const parser: StreamParser<CarveState> = {
+export const carveStreamParser: StreamParser<CarveState> = {
   startState: () => ({ frontmatter: false, fence: null }),
   token(stream, state) {
     if (stream.sol()) {
@@ -25,6 +25,16 @@ const parser: StreamParser<CarveState> = {
     if (stream.match(/\[\[[^\]]+\]\]/)) return 'link'
     if (stream.match(/!?\[[^\]]*\]\([^)]*\)/)) return 'link'
     if (stream.match(/`[^`]*`/)) return 'monospace'
+    // The whole include directive is one token, so every spelling of the
+    // selector and option slots is covered by construction rather than by a
+    // pattern per spelling. markup-carve/carve#2775 converged four of them
+    // (`{{ p#s }}`, `{{ "p"#s }}`, `{{ p@o:v }}`, `{{ p #S@o:v }}`), and a rule
+    // that reached inside the braces would have to grow an arm for each.
+    //
+    // It also has to come before the tag rule below, which would otherwise
+    // claim the `#Alpha` in `{{ frag.crv #Alpha }}` and paint a section
+    // selector as an Obsidian tag.
+    if (stream.match(/\{\{[^}\n]*\}\}/)) return 'keyword'
     if (stream.match(/\*[^*\n]+\*/)) return 'strong'
     if (stream.match(/\/[^/\n]+\//)) return 'emphasis'
     if (stream.match(/_[^_\n]+_/)) return 'underline'
@@ -44,5 +54,5 @@ const parser: StreamParser<CarveState> = {
   },
 }
 
-export const carveLanguage = StreamLanguage.define(parser)
+export const carveLanguage = StreamLanguage.define(carveStreamParser)
 export const carveHighlighting = syntaxHighlighting(defaultHighlightStyle, { fallback: true })

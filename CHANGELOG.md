@@ -6,6 +6,17 @@
   Prism, so a fence takes the active theme's token colors. `carve` and `crv`
   fences use the Prism grammar from carve-grammars, and a `{.diff}` fence keeps
   its language tokens beside the added and removed markers (#41, #42).
+- Highlight an include directive as one token in Live Preview, so a section
+  selector is no longer painted as an Obsidian tag: `{{ frag.crv #Alpha }}`
+  showed `#Alpha` in tag colors. Every spelling of the selector and option
+  slots is covered, because the rule takes the whole `{{ ... }}` span rather
+  than reaching inside it (#53).
+- Requires `@markup-carve/carve` 0.1.10. Cross-references now compare case
+  exactly: `</#plan>` against a heading `{#Plan}` rendered a working link to
+  `#Plan` before and renders as literal text now, as does a collapsed
+  `[plan][]` against a heading `Plan`. A note that relied on case-insensitive
+  cross-references loses those links rather than following them to the
+  differently-cased heading, so fix the case when upgrading (#53).
 
 ## 0.1.1
 
