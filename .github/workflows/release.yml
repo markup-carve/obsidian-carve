@@ -1,43 +1,65 @@
-name: Release
+name: Release packages and assets
 
+# Called by release-lane.yml twice for the same commit: once as a rehearsal
+# before the approval (publish: false) and once to publish after it
+# (publish: true). Every step that touches the remote is publish-only, so the
+# rehearsal proves the build without creating a tag or moving a release.
 on:
-  push:
-    tags:
-      # An Obsidian plugin tag is the bare manifest version with NO `v` prefix.
-      # The v-prefixed shape is matched too, and rejected by the guard below
-      # with an explanation: a tag GitHub never matches would run nothing at
-      # all, and "nothing happened" is the hardest release failure to read.
-      - '[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-  # A release is STARTED here. The `tag` job below creates the tag after the
-  # gates and after the approval, so starting a release no longer means pushing
-  # a tag by hand. Dispatched at an existing tag with no version it re-runs that
-  # one instead, which a tag push cannot do: recreating a tag under the same
-  # name fires no push event.
-  workflow_dispatch:
+  workflow_call:
     inputs:
+      publish:
+        required: true
+        type: boolean
+      tag:
+        required: true
+        type: string
       version:
-        description: 'Version to release, without a leading v (e.g. 0.1.9). Leave empty when dispatching at an existing tag.'
-        required: false
+        required: true
+        type: string
+      release_tag:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+      release_id:
+        required: true
+        type: string
+      release_body:
+        required: true
+        type: string
+      notes_digest:
+        required: true
         type: string
 
-# The tag this run releases: the one that was pushed, or the one a dispatch will
-# create. Every gate below reads this, so a dispatch and a tag push measure the
-# same version.
-env:
-  RELEASE_TAG: ${{ inputs.version != '' && inputs.version || github.ref_name }}
+permissions:
+  contents: write
+  actions: read
+  id-token: write
 
+# The tag this run releases. Both calls read it, so the rehearsal and the
+# publish measure the same version.
+env:
+  RELEASE_TAG: ${{ inputs.version != '' && inputs.version || inputs.tag }}
+  LANE_TAG: ${{ inputs.tag }}
+  LANE_REF: ${{ format('refs/tags/{0}', inputs.tag) }}
+  LANE_REF_TYPE: tag
+  LANE_PUBLISH: ${{ inputs.publish }}
 
 # Every job below carries a timeout-minutes bound. Without one a job inherits
 # GitHub's 360-minute default, and a stalled step can burn hours unnoticed.
+#
+# No job here declares `environment:`. The one approval lives on the lane's
+# `approve` job, and a second environment would ask the maintainer twice for
+# one decision.
 jobs:
   release:
     name: Build and attach the plugin assets
-    needs: [tag]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: write # uploads assets onto the release for this tag
+      actions: read
     steps:
       # GATE: the notes are not the workflow's to write. A CHANGELOG entry is
       # deliberately one or two lines for a contributor, which makes poor
@@ -48,6 +70,7 @@ jobs:
       # not a git ref, so addressing one by tag can match nothing, change
       # nothing and still exit 0.
       - name: A release draft for this tag exists and has notes
+        if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -56,6 +79,8 @@ jobs:
           if [ -z "$release" ]; then
             echo "::error::no release for $RELEASE_TAG. Write the notes first:" \
                  "gh release create $RELEASE_TAG --draft --notes-file NOTES.md"
+            echo "::error::if a draft DOES exist, this job could not see it -" \
+                 "check that the job still declares contents: write"
             exit 1
           fi
           body="$(printf '%s' "$release" | jq -r '.body // ""' | tr -d '[:space:]')"
@@ -64,6 +89,36 @@ jobs:
           printf '%s' "$release" | jq -r '"draft=\(.draft) tag=\(.tag_name)"'
 
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # GATE, publish only: the run really carries the approval, the tag really
+      # exists at the checked commit, and the notes are still the ones that
+      # were approved.
+      - name: Verify approval and checked tag before publishing
+        if: ${{ inputs.publish }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_SHA: ${{ inputs.source_sha }}
+          RELEASE_NOTES_DIGEST: ${{ inputs.notes_digest }}
+        run: python .github/scripts/release-lane.py permit
+
+      # The rehearsal has no remote tag to check against, so it makes a local
+      # one at the same commit. Nothing is pushed.
+      - name: Expose the candidate tag locally
+        if: ${{ !inputs.publish }}
+        shell: bash
+        env:
+          CANDIDATE_TAG: ${{ inputs.tag }}
+          CANDIDATE_SHA: ${{ inputs.source_sha }}
+        run: git tag "$CANDIDATE_TAG" "$CANDIDATE_SHA"
 
       # Cheapest check first: a mismatched tag is rejected before the install.
       - name: Verify the tag agrees with the manifest
@@ -100,12 +155,12 @@ jobs:
       - name: Verify the three release assets exist
         run: scripts/check-release-assets.sh
 
-      # The release for this tag usually already exists as a draft holding the
-      # notes, so `gh release create` would fail on it. Upload onto whatever is
-      # there and create one only when there is nothing. This step never flips
-      # a draft to published; the last step in the job does that, once the
-      # assets are verified.
+      # The release for this tag already exists as the draft holding the notes,
+      # so `gh release create` would fail on it. Upload onto whatever is there
+      # and create one only when there is nothing. This never flips a draft to
+      # published; the lane's `finalize` does that, once the assets are verified.
       - name: Attach main.js, manifest.json, and styles.css
+        if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ env.RELEASE_TAG }}
@@ -121,6 +176,7 @@ jobs:
       # Ask GitHub what the release carries rather than trusting the upload's
       # exit code. A partial upload leaves a release that installs nothing.
       - name: The release actually carries all three assets
+        if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ env.RELEASE_TAG }}
@@ -135,68 +191,3 @@ jobs:
             esac
           done
           exit $missing
-
-      # A registry publish is not finished until the release page exists. The
-      # tag is pushed, CI publishes, the registry answers 200, and "released"
-      # feels done - while `/releases` still shows a draft, so a reader has no
-      # notes and no changelog for the version they just installed. Doing it
-      # here rather than by hand also means the draft stops being a thing
-      # someone has to remember to publish at the right moment.
-      #
-      # Last, deliberately: a draft that stays a draft is recoverable, and one
-      # published beside a failed publish is not.
-      - name: Publish the release notes
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
-            --jq "[.[] | select(.tag_name == \"$RELEASE_TAG\" and .draft)] | first | .id // empty")"
-          if [ -z "$id" ]; then
-            echo "No draft release for $RELEASE_TAG; nothing to publish."
-            exit 0
-          fi
-          # `tag_name` goes with every PATCH of a release. Omit it on a DRAFT
-          # and GitHub replaces the tag with a generated `untagged-*`
-          # placeholder, because a draft's tag is a string on the object rather
-          # than a git ref - so the field has nothing to fall back to.
-          # `-F` (not `-f`) for draft, so it is sent as a boolean.
-          gh api "repos/$GITHUB_REPOSITORY/releases/$id" -X PATCH \
-            -f tag_name="$RELEASE_TAG" -F draft=false --jq '"published \(.tag_name)"'
-          # Read it back: exit status does not tell you whether the tag survived.
-          gh api "repos/$GITHUB_REPOSITORY/releases/$id" \
-            --jq '"draft=\(.draft) tag=\(.tag_name)"'
-
-  # THE TAG IS CREATED HERE, after a human approves, so a release can be started
-  # without a tag existing - which is the whole point: creating the tag by hand
-  # was the maintainer's step.
-  # Nothing in this workflow gates it, because the checks live in the
-  # publishing job as steps - so the approval sits exactly where it sat
-  # before, ahead of them.
-  #
-  # A tag push still works unchanged: the step finds the tag already on the
-  # remote and creates nothing. The publish runs in THIS run rather than on the
-  # new tag, because a ref created with github.token triggers no workflow.
-  tag:
-    name: Create the tag
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    environment: release-approval
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Create the tag unless it already exists
-        run: |
-          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "$RELEASE_TAG is already on the remote; creating nothing."
-            exit 0
-          fi
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            echo "::error::this run is on tag $RELEASE_TAG, which is not on the remote."
-            exit 1
-          fi
-          # Re-checked under the approval: a tag can appear while a run waits.
-          git tag "$RELEASE_TAG" "$GITHUB_SHA"
-          git push origin "refs/tags/$RELEASE_TAG"
-          echo "tagged $RELEASE_TAG at $GITHUB_SHA"
