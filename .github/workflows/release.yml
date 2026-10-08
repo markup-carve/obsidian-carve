@@ -1,5 +1,9 @@
 name: Release packages and assets
 
+# Called by release-lane.yml twice for the same commit: once as a rehearsal
+# before the approval (publish: false) and once to publish after it
+# (publish: true). Every step that touches the remote is publish-only, so the
+# rehearsal proves the build without creating a tag or moving a release.
 on:
   workflow_call:
     inputs:
@@ -27,20 +31,30 @@ on:
       notes_digest:
         required: true
         type: string
+
+permissions:
+  contents: write
+  actions: read
+  id-token: write
+
+# The tag this run releases. Both calls read it, so the rehearsal and the
+# publish measure the same version.
 env:
   RELEASE_TAG: ${{ inputs.version != '' && inputs.version || inputs.tag }}
-
-
-# Every job below carries a timeout-minutes bound. Without one a job inherits
-# GitHub's 360-minute default, and a stalled step can burn hours unnoticed.
   LANE_TAG: ${{ inputs.tag }}
   LANE_REF: ${{ format('refs/tags/{0}', inputs.tag) }}
   LANE_REF_TYPE: tag
   LANE_PUBLISH: ${{ inputs.publish }}
+
+# Every job below carries a timeout-minutes bound. Without one a job inherits
+# GitHub's 360-minute default, and a stalled step can burn hours unnoticed.
+#
+# No job here declares `environment:`. The one approval lives on the lane's
+# `approve` job, and a second environment would ask the maintainer twice for
+# one decision.
 jobs:
   release:
     name: Build and attach the plugin assets
-    needs: [tag]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -56,6 +70,7 @@ jobs:
       # not a git ref, so addressing one by tag can match nothing, change
       # nothing and still exit 0.
       - name: A release draft for this tag exists and has notes
+        if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -64,6 +79,8 @@ jobs:
           if [ -z "$release" ]; then
             echo "::error::no release for $RELEASE_TAG. Write the notes first:" \
                  "gh release create $RELEASE_TAG --draft --notes-file NOTES.md"
+            echo "::error::if a draft DOES exist, this job could not see it -" \
+                 "check that the job still declares contents: write"
             exit 1
           fi
           body="$(printf '%s' "$release" | jq -r '.body // ""' | tr -d '[:space:]')"
@@ -71,18 +88,19 @@ jobs:
             || { echo "::error::the release for $RELEASE_TAG has no notes"; exit 1; }
           printf '%s' "$release" | jq -r '"draft=\(.draft) tag=\(.tag_name)"'
 
-        if: ${{ inputs.publish }}
       - uses: actions/checkout@v4
-
-      # Cheapest check first: a mismatched tag is rejected before the install.
         with:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
+
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+
+      # GATE, publish only: the run really carries the approval, the tag really
+      # exists at the checked commit, and the notes are still the ones that
+      # were approved.
       - name: Verify approval and checked tag before publishing
-        working-directory: ${{ github.workspace }}
         if: ${{ inputs.publish }}
         shell: bash
         env:
@@ -91,13 +109,18 @@ jobs:
           RELEASE_SHA: ${{ inputs.source_sha }}
           RELEASE_NOTES_DIGEST: ${{ inputs.notes_digest }}
         run: python .github/scripts/release-lane.py permit
+
+      # The rehearsal has no remote tag to check against, so it makes a local
+      # one at the same commit. Nothing is pushed.
       - name: Expose the candidate tag locally
         if: ${{ !inputs.publish }}
         shell: bash
         env:
           CANDIDATE_TAG: ${{ inputs.tag }}
-        run: |
-          git tag "$CANDIDATE_TAG" "${{ inputs.source_sha }}"
+          CANDIDATE_SHA: ${{ inputs.source_sha }}
+        run: git tag "$CANDIDATE_TAG" "$CANDIDATE_SHA"
+
+      # Cheapest check first: a mismatched tag is rejected before the install.
       - name: Verify the tag agrees with the manifest
         run: scripts/check-release-tag.sh "$RELEASE_TAG"
 
@@ -132,12 +155,12 @@ jobs:
       - name: Verify the three release assets exist
         run: scripts/check-release-assets.sh
 
-      # The release for this tag usually already exists as a draft holding the
-      # notes, so `gh release create` would fail on it. Upload onto whatever is
-      # there and create one only when there is nothing. This step never flips
-      # a draft to published; the last step in the job does that, once the
-      # assets are verified.
+      # The release for this tag already exists as the draft holding the notes,
+      # so `gh release create` would fail on it. Upload onto whatever is there
+      # and create one only when there is nothing. This never flips a draft to
+      # published; the lane's `finalize` does that, once the assets are verified.
       - name: Attach main.js, manifest.json, and styles.css
+        if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ env.RELEASE_TAG }}
@@ -152,8 +175,8 @@ jobs:
 
       # Ask GitHub what the release carries rather than trusting the upload's
       # exit code. A partial upload leaves a release that installs nothing.
-        if: ${{ inputs.publish }}
       - name: The release actually carries all three assets
+        if: ${{ inputs.publish }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ env.RELEASE_TAG }}
@@ -168,38 +191,3 @@ jobs:
             esac
           done
           exit $missing
-
-      # A registry publish is not finished until the release page exists. The
-      # tag is pushed, CI publishes, the registry answers 200, and "released"
-      # feels done - while `/releases` still shows a draft, so a reader has no
-      # notes and no changelog for the version they just installed. Doing it
-      # here rather than by hand also means the draft stops being a thing
-      # someone has to remember to publish at the right moment.
-      #
-      # Last, deliberately: a draft that stays a draft is recoverable, and one
-      # published beside a failed publish is not.
-        if: ${{ inputs.publish }}
-  tag:
-    name: Create the tag
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-      actions: read
-    steps:
-      - uses: actions/checkout@v4
-
-        with:
-          ref: ${{ inputs.source_sha }}
-          fetch-depth: 0
-      - name: Expose the candidate tag locally
-        if: ${{ !inputs.publish }}
-        shell: bash
-        env:
-          CANDIDATE_TAG: ${{ inputs.tag }}
-        run: |
-          git tag "$CANDIDATE_TAG" "${{ inputs.source_sha }}"
-permissions:
-  contents: write
-  actions: read
-  id-token: write

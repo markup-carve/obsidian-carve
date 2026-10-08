@@ -67,7 +67,7 @@ class ReleaseLaneTests(unittest.TestCase):
                 return_value=json.dumps([[dict(RELEASE, target_commitish="b" * 40)]]),
             ),
             patch.object(lane, "api", return_value={"sha": "b" * 40}),
-            self.assertRaisesRegex(AssertionError, "exact commit"),
+            self.assertRaisesRegex(AssertionError, "different commit"),
         ):
             lane.draft("owner/repo", "0.1.4", SHA)
 
@@ -287,15 +287,21 @@ class ReleaseLaneTests(unittest.TestCase):
         ):
             lane.check_approval_settings("owner/repo", {"publisher_environments": ["pypi"]})
 
-    def test_branch_targets_are_rejected_even_when_they_resolve_to_the_commit(self):
+    def test_branch_target_is_resolved_to_its_head(self):
+        # A draft tracks the head by targeting a branch while the version is
+        # prepared, so a branch name is resolved rather than refused. The
+        # earlier gate and the post-approval re-check share this one function,
+        # which is what keeps them from disagreeing after an approval.
+        listing = json.dumps([[dict(RELEASE, target_commitish="main")]])
         with (
-            patch.object(
-                lane.subprocess,
-                "check_output",
-                return_value=json.dumps([[dict(RELEASE, target_commitish="main")]]),
-            ),
+            patch.object(lane.subprocess, "check_output", return_value=listing),
             patch.object(lane, "api", return_value={"sha": SHA}),
-            self.assertRaisesRegex(AssertionError, "exact commit"),
+        ):
+            lane.draft("owner/repo", "0.1.4", SHA)
+        with (
+            patch.object(lane.subprocess, "check_output", return_value=listing),
+            patch.object(lane, "api", return_value={"sha": "b" * 40}),
+            self.assertRaisesRegex(AssertionError, "different commit"),
         ):
             lane.draft("owner/repo", "0.1.4", SHA)
 

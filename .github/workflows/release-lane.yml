@@ -3,8 +3,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Stable version to check or publish, without v
-        required: true
+        description: 'Version to release, without a leading v (e.g. 0.1.2). Leave empty to release the version this commit declares.'
+        required: false
         type: string
       publish:
         description: Publish after checks and one approval
@@ -65,6 +65,11 @@ jobs:
     environment: release-approval
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # This job POSTs /git/refs to create the tag. Without contents: write that
+    # call answers 403 and the release dies immediately after the approval.
+    permissions:
+      contents: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
         with:

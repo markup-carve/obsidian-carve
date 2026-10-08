@@ -45,7 +45,13 @@ def draft(repo, tag, sha, allow_published=False):
     assert allow_published or release["draft"], "Release is already public"
     assert release["body"].strip(), "Release notes are empty"
     target = release["target_commitish"]
-    assert target == sha, "Prepare release notes with an exact commit SHA as target"
+    # A draft may target a branch name instead of a SHA, which is how a draft
+    # tracks the head while the version is still being prepared. Resolve it
+    # once, here, so every caller measures the target the same way: an earlier
+    # gate that accepted a branch and a post-approval re-check that demanded a
+    # SHA would pass the checks and then fail the run after the approval.
+    if target != sha and not re.fullmatch(r"[0-9a-f]{40}", target):
+        target = api(f"repos/{repo}/commits/{urllib.parse.quote(target)}")["sha"]
     assert target == sha, "Release notes target a different commit"
     return release
 
@@ -153,12 +159,31 @@ def check_approval_settings(repo, config):
         ), f"{name} still requires a second review; apply configure-release-lane.py after merging"
 
 
+def declared_version(config):
+    declaration = config["versions"][0]
+    text = Path(declaration["path"]).read_text()
+    if "pattern" in declaration:
+        match = re.search(declaration["pattern"], text, re.M)
+        assert match, f"No version found in {declaration['path']}"
+        return match[1]
+    declared = json.loads(text)
+    for key in declaration["field"]:
+        declared = declared[key]
+    return declared
+
+
 def metadata(repo, tag, sha, publish):
+    config = json.loads(Path(".github/release-lane.json").read_text())
+    # The version input is optional: dispatched without one, the release is the
+    # version this commit already declares. Every later stage reads the `tag`
+    # output rather than the input, so they all see the resolved value.
+    if not tag:
+        tag = declared_version(config)
+        print(f"No version given; releasing the declared version {tag}")
     assert re.fullmatch(r"v?[0-9]+\.[0-9]+\.[0-9]+", tag), "Use a stable X.Y.Z release version"
     assert re.fullmatch(r"[a-f0-9]{40}", sha), "Release source must be an exact commit"
     head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
     assert head == sha, "Checkout differs from the workflow commit"
-    config = json.loads(Path(".github/release-lane.json").read_text())
     check_versions(config, tag.removeprefix("v"))
     check_approval_settings(repo, config)
     changelog = Path("CHANGELOG.md")
@@ -168,10 +193,7 @@ def metadata(repo, tag, sha, publish):
             "Changelog has no section for this version"
         )
     default = api(f"repos/{repo}")["default_branch"]
-    if True:
-        assert os.environ["GITHUB_REF"] == f"refs/heads/{default}", (
-            "Publish from the default branch"
-        )
+    assert os.environ["GITHUB_REF"] == f"refs/heads/{default}", "Publish from the default branch"
     check_tag(repo, tag, sha, absent=True)
     release = draft(repo, tag, sha)
     check_ci(repo, sha)

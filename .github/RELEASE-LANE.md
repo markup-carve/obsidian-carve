@@ -1,8 +1,8 @@
 # Releasing
 
-Prepare a version commit and an unpublished GitHub release with notes. Set the draft's tag to the repository's normal version format and its target to the exact commit that will be released.
+Prepare a version commit and an unpublished GitHub release with notes. Set the draft's tag to the repository's normal version format. Target it at the default branch to track the head while the version is prepared, or at the exact commit to release; either way the gates resolve it to one commit, and publishing rewrites the target to that commit.
 
-Run the Release workflow from the default branch with the version number, without a leading `v`. Leave `publish` off for a rehearsal. It checks the commit's CI, prepared notes, builds and package validation without creating a remote tag or publishing anything.
+Run the Release workflow from the default branch. Give the version number without a leading `v`, or leave it empty to release the version the commit already declares in `manifest.json`. Leave `publish` off for a rehearsal. It checks the commit's CI, prepared notes, builds and package validation without creating a remote tag or publishing anything.
 
 To release, enable `publish`. After the same checks pass, approve the `release-approval` environment once. The workflow creates the tag at the checked commit, publishes packages and assets, verifies availability, then publishes the prepared notes. A failed check leaves the draft unpublished. Publication failures also produce a status report showing which packages and assets are available.
 
