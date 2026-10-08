@@ -1,9 +1,7 @@
 {
   "workflow": ".github/workflows/release-lane.yml",
   "publisher": ".github/workflows/release.yml",
-  "publisher_environments": [
-    "release-approval"
-  ],
+  "publisher_environments": [],
   "registries": {},
   "assets": [
     "main.js",

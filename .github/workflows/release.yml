@@ -78,6 +78,9 @@ jobs:
         with:
           ref: ${{ inputs.source_sha }}
           fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - name: Verify approval and checked tag before publishing
         working-directory: ${{ github.workspace }}
         if: ${{ inputs.publish }}
@@ -180,7 +183,6 @@ jobs:
     name: Create the tag
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: release-approval
     permissions:
       contents: write
       actions: read
