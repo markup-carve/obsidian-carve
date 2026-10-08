@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2
+
 - Highlight code blocks in the reading view through Obsidian's own bundled
   Prism, so a fence takes the active theme's token colors. `carve` and `crv`
   fences use the Prism grammar from carve-grammars, and a `{.diff}` fence keeps
