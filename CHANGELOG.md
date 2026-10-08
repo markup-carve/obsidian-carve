@@ -4,6 +4,11 @@
 
 ## 0.1.2
 
+- Read a quote at document text contrast in the previews. A quote body used
+  muted text and a faint border, and a quote caption sat outside the text
+  inset; the body now takes normal text color with a stronger border, and a
+  caption aligns with the quote body. Paragraph gaps inside a quote are kept
+  and the trailing gap is trimmed (#56).
 - Highlight code blocks in the reading view through Obsidian's own bundled
   Prism, so a fence takes the active theme's token colors. `carve` and `crv`
   fences use the Prism grammar from carve-grammars, and a `{.diff}` fence keeps

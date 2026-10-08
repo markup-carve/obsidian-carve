@@ -202,3 +202,29 @@
 .carve-construct-preview-label { margin-top: 1rem; color: var(--text-muted); font-size: var(--font-ui-small); font-weight: var(--font-semibold); }
 .carve-construct-preview { min-height: 4rem; margin-top: .35rem; padding: .75rem; border: 1px solid var(--background-modifier-border); border-radius: var(--radius-s); }
 .carve-construct-actions { display: flex; justify-content: flex-end; gap: .5rem; margin-top: 1rem; }
+
+.carve-preview.markdown-rendered blockquote,
+.carve-visual-editor.markdown-rendered blockquote,
+.carve-construct-preview.markdown-rendered blockquote {
+  color: var(--text-normal);
+  border-inline-start: var(--blockquote-border-thickness, 3px) solid var(--text-muted);
+  border-inline-end: 0;
+  padding-inline-end: 0;
+  padding-inline-start: 1rem;
+  padding-block: .25rem;
+  margin-inline: 0;
+}
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview).markdown-rendered blockquote > p { margin-block: 0 .75rem; }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview).markdown-rendered blockquote > :first-child { margin-block-start: 0; }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview).markdown-rendered blockquote > :last-child { margin-block-end: 0; }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview).markdown-rendered figure:has(> blockquote) { margin-inline: 0; text-align: start; }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview).markdown-rendered figure > blockquote { margin-block-end: 0; }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview).markdown-rendered figure:has(> blockquote) > figcaption {
+  color: var(--text-muted);
+  font-size: var(--font-smaller);
+  margin-block-start: .5rem;
+  padding-inline-start: calc(1rem + var(--blockquote-border-thickness, 3px));
+}
+@media (forced-colors: active) {
+  :is(.carve-preview, .carve-visual-editor, .carve-construct-preview).markdown-rendered blockquote { border-color: CanvasText; }
+}
