@@ -30,24 +30,32 @@ env:
 
 # Every job below carries a timeout-minutes bound. Without one a job inherits
 # GitHub's 360-minute default, and a stalled step can burn hours unnoticed.
+# THE GATES. Neither carries `environment:`, so neither asks for an approval:
+# they run first, and the `tag` job below needs both. They used to be steps
+# inside the asset job, which sits AFTER the approval - so the maintainer
+# approved a run that had verified nothing, and the first thing the approval
+# bought was the tag.
 jobs:
-  release:
-    name: Build and attach the plugin assets
-    needs: [tag]
+  release-notes:
+    name: A release draft for this tag exists and has notes
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     permissions:
-      contents: write # uploads assets onto the release for this tag
+      # `write`, not `read`: a DRAFT release is invisible to a caller without
+      # push access, so under `contents: read` the listing comes back empty and
+      # this reports "no release" for a draft sitting right there with notes in
+      # it. See markup-carve/carve-wasm#80.
+      contents: write
     steps:
-      # GATE: the notes are not the workflow's to write. A CHANGELOG entry is
+      # The notes are not the workflow's to write. A CHANGELOG entry is
       # deliberately one or two lines for a contributor, which makes poor
       # release notes for a reader deciding whether to upgrade. A human writes
-      # the draft first and this refuses to publish without one.
+      # the draft first and this refuses to release without one.
       #
       # Found by listing rather than `gh release view <tag>`: a draft's tag is
       # not a git ref, so addressing one by tag can match nothing, change
       # nothing and still exit 0.
-      - name: A release draft for this tag exists and has notes
+      - name: The draft exists and has notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -56,6 +64,8 @@ jobs:
           if [ -z "$release" ]; then
             echo "::error::no release for $RELEASE_TAG. Write the notes first:" \
                  "gh release create $RELEASE_TAG --draft --notes-file NOTES.md"
+            echo "::error::if a draft DOES exist, this job could not see it -" \
+                 "check that the job still declares contents: write"
             exit 1
           fi
           body="$(printf '%s' "$release" | jq -r '.body // ""' | tr -d '[:space:]')"
@@ -63,11 +73,73 @@ jobs:
             || { echo "::error::the release for $RELEASE_TAG has no notes"; exit 1; }
           printf '%s' "$release" | jq -r '"draft=\(.draft) tag=\(.tag_name)"'
 
+  guard:
+    name: The tag, the manifest and the tests agree
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
       - uses: actions/checkout@v4
 
       # Cheapest check first: a mismatched tag is rejected before the install.
+      # This is also what rejects a `v`-prefixed tag, which an Obsidian plugin
+      # manifest never carries.
       - name: Verify the tag agrees with the manifest
         run: scripts/check-release-tag.sh "$RELEASE_TAG"
+
+      # Only meaningful on a dispatch that will CREATE the tag. A tag push
+      # arrives with the tag already on the remote, so this would refuse every
+      # run of the legacy path.
+      - name: The tag does not exist yet
+        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "::error::$RELEASE_TAG is already on the remote. Obsidian's" \
+                 "community list serves whatever that tag points at, so" \
+                 "supersede it with a new version instead."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The lockfile carries no git dependency any more: #37 moved the last
+      # one, carve-grammars, onto a registry tarball. This stays as a net for
+      # the next one, because a git+ssh entry installs on a runner only
+      # through npm's own fallback to HTTPS, and a release must not rest on
+      # that. Both lines write the SAME config key, so both need --add:
+      # a plain set would replace the first rewrite with the second and leave
+      # the ssh:// form uncovered.
+      - name: Prefer HTTPS for Git dependencies
+        run: |
+          git config --global --add url."https://github.com/".insteadOf ssh://git@github.com/
+          git config --global --add url."https://github.com/".insteadOf git@github.com:
+          git config --global --get-all url."https://github.com/".insteadOf
+
+      - run: npm ci
+
+      # The same gate CI runs: tests, typecheck, and the production build that
+      # writes main.js. A release is not the place to find out the bundle does
+      # not compile.
+      - run: npm run test:all
+
+      # main.js is a build artifact and is not in the repo tree, so this is
+      # what stands between a green gate and a release carrying two of the
+      # three files a user needs. It is checked here as well as after the
+      # build below, because here it can still stop the tag.
+      - name: Verify the three release assets exist
+        run: scripts/check-release-assets.sh
+
+  release:
+    name: Build and attach the plugin assets
+    needs: [tag]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write # uploads assets onto the release for this tag
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
@@ -166,12 +238,18 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases/$id" \
             --jq '"draft=\(.draft) tag=\(.tag_name)"'
 
-  # THE TAG IS CREATED HERE, after a human approves, so a release can be started
-  # without a tag existing - which is the whole point: creating the tag by hand
-  # was the maintainer's step.
-  # Nothing in this workflow gates it, because the checks live in the
-  # publishing job as steps - so the approval sits exactly where it sat
-  # before, ahead of them.
+  # THE TAG IS CREATED HERE, after the gates pass and after a human approves, so
+  # a release can be started without a tag existing - which is the whole point:
+  # creating the tag by hand was the maintainer's step.
+  #
+  # `needs:` is what makes the approval mean something. Without it the run
+  # reached this job immediately, the reviewer was asked to approve a run that
+  # had measured nothing, and the checks then ran in the asset job on the far
+  # side of the tag - where a red one can no longer withhold anything.
+  #
+  # This is also the ONLY job carrying `environment:`. GitHub prompts once per
+  # gated job, so a second one would ask twice for one decision, and the second
+  # prompt would arrive after the tag already existed.
   #
   # A tag push still works unchanged: the step finds the tag already on the
   # remote and creates nothing. The publish runs in THIS run rather than on the
@@ -180,11 +258,17 @@ jobs:
     name: Create the tag
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: [guard, release-notes]
     environment: release-approval
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      # Re-checked under the approval: main can move while a run waits for a
+      # reviewer, and the gate measured the commit that was current then.
+      - name: The tag and the manifest still agree
+        run: scripts/check-release-tag.sh "$RELEASE_TAG"
 
       - name: Create the tag unless it already exists
         run: |
