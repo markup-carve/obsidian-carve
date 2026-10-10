@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { carveToHtml } from '@markup-carve/carve'
-import { isBareListMarker, shouldHoldRender } from '../dist-test/preview-hold.js'
+import { EditorSelection, EditorState } from '@codemirror/state'
+import { isBareListMarker, previewHoldUpdate, shouldHoldRender } from '../dist-test/preview-hold.js'
+import { listContinuationEdit } from '../dist-test/editor-commands.js'
 
 const bare = [
   '-', '- ', '*', '* ', '-\t',
@@ -86,4 +88,35 @@ test('repeated roman and alpha markers do not backtrack exponentially', () => {
     assert.equal(isBareListMarker(line), false)
   }
   assert.ok(performance.now() - started < 1000)
+})
+
+function enter(state) {
+  const head = state.selection.main.head; const line = state.doc.lineAt(head)
+  const edit = listContinuationEdit(state.doc.toString(), line.from, line.to, head)
+  assert.ok(edit, 'Enter continues the list')
+  return state.update({ changes: edit.changes, selection: EditorSelection.cursor(edit.head) })
+}
+const focused = { hasFocus: true }
+
+test('Enter after a task leaves a content-less box under the cursor and the preview holds', () => {
+  const start = EditorState.create({ doc: '- [x] done', selection: { anchor: 10 } })
+  const transaction = enter(start)
+  assert.equal(transaction.state.doc.toString(), '- [x] done\n- [ ] ')
+  assert.equal(transaction.state.selection.main.head, transaction.state.doc.length)
+  // The engine reads `- [ ] ` as a plain item with text `[ ]`, which is what the hold keeps off screen.
+  assert.match(carveToHtml('- [x] done\n- [ ] '), /<li>\[ \]<\/li>/)
+  const update = { docChanged: true, selectionSet: true, focusChanged: false, state: transaction.state, view: focused }
+  assert.deepEqual(previewHoldUpdate(update, null), { heldLine: 1, render: false })
+})
+
+test('the hold on a content-less box releases on the first character, on leaving the line, or on blur', () => {
+  const held = EditorState.create({ doc: '- [x] done\n- [ ] ', selection: { anchor: 17 } })
+  const typed = held.update({ changes: { from: 17, insert: 'a' }, selection: { anchor: 18 } }).state
+  assert.deepEqual(previewHoldUpdate({ docChanged: true, selectionSet: true, focusChanged: false, state: typed, view: focused }, 1), { heldLine: null, render: true })
+  const moved = held.update({ selection: { anchor: 3 } }).state
+  assert.deepEqual(previewHoldUpdate({ docChanged: false, selectionSet: true, focusChanged: false, state: moved, view: focused }, 1), { heldLine: null, render: true })
+  const along = held.update({ selection: { anchor: 13 } }).state
+  assert.deepEqual(previewHoldUpdate({ docChanged: false, selectionSet: true, focusChanged: false, state: along, view: focused }, 1), { heldLine: 1, render: false })
+  assert.deepEqual(previewHoldUpdate({ docChanged: false, selectionSet: false, focusChanged: true, state: held, view: { hasFocus: false } }, 1), { heldLine: null, render: true })
+  assert.deepEqual(previewHoldUpdate({ docChanged: false, selectionSet: true, focusChanged: false, state: moved, view: focused }, null), { heldLine: null, render: false })
 })

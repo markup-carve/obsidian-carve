@@ -18,7 +18,7 @@ import { appendOpaqueConstruct, editOpaqueWithPrompts, opaqueBlock, renderOpaque
 import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureCellPlaceholder, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, tableCellRectangle, tableCellsToTsv, toggleTableHeader, toggleTableHeaderAxis } from './visual-table'
 import { applyVisualInputRule, backspaceVisualListItem, clearVisualFormatting, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, insertVisualRule, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
 import { captureVisualSnapshot, restoreVisualSnapshot, type VisualSnapshot } from './visual-history'
-import { shouldHoldRender } from './preview-hold'
+import { previewHoldUpdate } from './preview-hold'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
 export type CarveViewMode = 'preview' | 'source' | 'split' | 'visual'
@@ -146,18 +146,15 @@ export class CarveView extends TextFileView {
           }),
           EditorView.contentAttributes.of({ 'aria-label': 'Carve source' }),
           EditorView.updateListener.of((update) => {
-            if (!update.docChanged) {
-              if (!livePreview || this.heldLine === null) return
-              if (update.focusChanged && !update.view.hasFocus) this.releaseHeldRender()
-              else if (update.selectionSet && this.cursorHoldLine(update.state) !== this.heldLine) this.releaseHeldRender()
-              return
+            if (update.docChanged) {
+              this.source = update.state.doc.toString()
+              if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
+              this.saveTimer = window.setTimeout(() => { this.requestSave(); this.saveTimer = null }, 250)
             }
-            this.source = update.state.doc.toString()
-            if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
-            this.saveTimer = window.setTimeout(() => { this.requestSave(); this.saveTimer = null }, 250)
             if (!livePreview) return
-            this.heldLine = this.cursorHoldLine(update.state)
-            if (this.heldLine === null) void this.renderPreview(livePreview)
+            const next = previewHoldUpdate(update, this.heldLine)
+            this.heldLine = next.heldLine
+            if (next.render) void this.renderPreview(livePreview)
           })],
       }),
     })
@@ -198,12 +195,6 @@ export class CarveView extends TextFileView {
     action('<>', 'Wrap selection in code fence', wrapCodeBlock)
     action('Callout', 'Wrap selection in a note callout', wrapCallout)
     action('―', 'Insert horizontal rule', insertHorizontalRule)
-  }
-
-  /** The cursor line when it holds a bare list marker, which would flicker the preview. */
-  private cursorHoldLine(state: EditorState): number | null {
-    const line = state.doc.lineAt(state.selection.main.head).number - 1
-    return shouldHoldRender(this.source, line) ? line : null
   }
 
   private releaseHeldRender(): void {
