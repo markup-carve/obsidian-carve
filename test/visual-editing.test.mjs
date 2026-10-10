@@ -346,3 +346,12 @@ test('Home goes to the task text; ArrowLeft from there goes to the line above', 
   assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(alpha.childNodes[1], 1)), true, 'nothing above: stay after the box')
   assert.deepEqual(caret(), [alpha.childNodes[1], 1])
 })
+
+test('an empty task with nested items keeps them when Backspace or Enter ends it', () => {
+  for (const command of [backspaceVisualListItem, continueVisualList]) {
+    const surface = taskSurface('- [ ] \n\n  - child\n')
+    const parent = surface.querySelector('li')
+    assert.equal(command(surface, caretAt(parent, 1)), true, command.name)
+    assert.match(visualHtmlToSource(surface.innerHTML).source, /^- child\n$/m, command.name)
+  }
+})

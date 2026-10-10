@@ -446,7 +446,7 @@ const leftOverTask: Command = (view) => {
 
 const backspaceTask: Command = (view) => {
   const selection = view.state.selection.main
-  if (!selection.empty || view.state.readOnly) return false
+  if (!selection.empty || view.state.selection.ranges.length > 1 || view.state.readOnly) return false
   const edit = taskBackspaceEdit(view.state.doc.toString(), selection.head)
   if (!edit) return false
   view.dispatch({ changes: edit.changes, selection: EditorSelection.cursor(edit.head), scrollIntoView: true, userEvent: 'delete.backward' })

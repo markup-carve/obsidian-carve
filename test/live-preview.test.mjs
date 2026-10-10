@@ -479,6 +479,13 @@ test('source view: Backspace at a task text removes box and bullet and keeps the
     assert.ok(key('Backspace'))
     assert.equal(view.state.doc.toString(), 'top\n\n- [ ] alpha\n\nbeta\n\n\n')
     assert.equal(view.state.selection.main.head, view.state.doc.length - 1, 'the caret stays on the emptied line')
+    const { EditorSelection } = await import('@codemirror/state')
+    view.dispatch({ changes: { from: 0, insert: '- [ ] one\n- [ ] two\n\n' } })
+    view.dispatch({ selection: EditorSelection.create([EditorSelection.cursor(6), EditorSelection.cursor(16)], 1) })
+    const before = view.state.doc.toString()
+    key('Backspace')
+    assert.notEqual(view.state.selection.ranges.length, 1, 'several carets are left to the default Backspace')
+    assert.notEqual(view.state.doc.toString(), before)
     view.dispatch({ selection: { anchor: 0 } })
     // A second @codemirror/state copy under @codemirror/commands made every cursor command
     // dispatch a selection the view could not read, so the caret fell back to native movement.
