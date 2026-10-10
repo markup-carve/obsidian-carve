@@ -24,7 +24,11 @@ The plugin registers `.crv` as its own Obsidian view and provides four modes:
 - **Live split** keeps the CodeMirror source and rendered document side by side
   and refreshes the preview as you type. Its source pane deliberately remains a
   conventional highlighted editor because the adjacent pane supplies the
-  visual feedback.
+  visual feedback. While the cursor line holds only a list marker (`- `, `1.`,
+  `- [ ]`, also inside a quote, never in a code block), the preview keeps its
+  last render: a bare marker is paragraph text and would briefly fold into the
+  item above. It catches up once the line gets content, the cursor leaves the
+  line, or focus moves elsewhere. Saved source and exports are unaffected.
 - **Visual (experimental)** edits rendered prose directly and imports each
   change through Carve's safe HTML importer.
 

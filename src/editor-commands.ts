@@ -184,7 +184,11 @@ export const wrapCallout: Command = (view): boolean => {
 // The separator must open with a space and roman numerals are single-case, as the
 // parser reads them; `+` is the continuation marker, not a bullet.
 const ITEM_MARKER = /^([ \t]*)([-*]|\.|(?:[0-9]+|[A-Za-z]+)[.)])( [ \t]*)/
-const BARE_MARKER = /^[ \t]*(?:[-*] [ \t]*(?:\[[ xX_>?-]\] [ \t]*)?|(?:\.|(?:[0-9]+|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+)[.)]) [ \t]*)$/
+// Alpha and roman stay disjoint so a pattern that repeats a marker cannot backtrack exponentially.
+export const BULLET_MARKER = '[-*]'
+export const ORDERED_MARKER = String.raw`(?:\.|(?:[0-9]+|[A-Za-z]|[ivxlcdm]{2,}|[IVXLCDM]{2,})[.)])`
+export const TASK_BOX_MARKER = String.raw`\[[ xX_>?-]\]`
+const BARE_MARKER = new RegExp(String.raw`^[ \t]*(?:${BULLET_MARKER} [ \t]*(?:${TASK_BOX_MARKER} [ \t]*)?|${ORDERED_MARKER} [ \t]*)$`)
 const TASK_BOX = /^\[[ xX_>?-]\]( [ \t]*|$)/
 // A content-less marker parses as lazy text, so it is measured with a placeholder.
 const PLACEHOLDER = 'x'
@@ -234,6 +238,11 @@ function sourceLists(source: string): SourceLists | null {
   }
   visit(doc.children, null)
   return result
+}
+
+/** Zero-based lines inside a code or raw block, or null when the source does not parse. */
+export function codeBlockLines(source: string): ReadonlySet<number> | null {
+  return sourceLists(source)?.code ?? null
 }
 
 function columns(text: string, start = 0): number {
