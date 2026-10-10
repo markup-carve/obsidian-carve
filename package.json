@@ -16,8 +16,8 @@
   },
   "dependencies": {
     "@codemirror/language": "^6.12.4",
-    "@codemirror/state": "6.5.0",
-    "@codemirror/view": "6.38.6",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.13",
     "@lezer/highlight": "^1.2.3",
     "@markup-carve/carve": "^0.1.10",
     "@markup-carve/carve-grammars": "^0.1.9",
