@@ -5,7 +5,7 @@ import { Window } from 'happy-dom'
 const window = new Window()
 Object.assign(globalThis, { document: window.document, Element: window.Element, HTMLLIElement: window.HTMLLIElement, HTMLInputElement: window.HTMLInputElement })
 const { applyVisualInputRule, backspaceVisualListItem, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, wrapVisualSelection } = await import('../dist-test/visual-editing.js')
-const { visualHtmlToSource } = await import('../dist-test/wysiwyg.js')
+const { sourceToVisualDocument, visualHtmlToSource } = await import('../dist-test/wysiwyg.js')
 
 function selectTextNode(element, offset) {
   const range = document.createRange(); range.setStart(element.firstChild, offset); range.collapse(true)
@@ -128,6 +128,27 @@ test('visual task checkboxes are interactive and serialize their state', () => {
   const checkbox = surface.querySelector('input'); checkbox.checked = true
   assert.equal(toggleVisualTask(surface, checkbox), true)
   assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [x] task\n')
+})
+
+test('seeded task checkboxes are clickable and a toggle drops the extended state', () => {
+  const visual = sourceToVisualDocument('- [ ] Draft\n- [x] Done\n- [>] Ship\n')
+  assert.doesNotMatch(visual.html, /disabled/)
+  assert.equal(visualHtmlToSource(visual.html).source, '- [ ] Draft\n- [x] Done\n- [>] Ship\n')
+  const surface = document.createElement('article'); surface.innerHTML = visual.html; document.body.append(surface)
+  surface.addEventListener('change', (event) => toggleVisualTask(surface, event.target))
+  const ship = surface.querySelectorAll('input')[2]
+  ship.click()
+  assert.equal(ship.checked, true)
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] Draft\n- [x] Done\n- [x] Ship\n')
+  ship.click()
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] Draft\n- [x] Done\n- [ ] Ship\n')
+})
+
+test('task toolbar toggle also drops the extended state', () => {
+  const surface = document.createElement('article'); surface.innerHTML = sourceToVisualDocument('- [?] Ship\n').html; document.body.append(surface)
+  placeSelectionEnd(surface.querySelector('li'))
+  assert.equal(toggleVisualTaskAtSelection(surface), true)
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [x] Ship\n')
 })
 
 test('task toolbar converts prose and toggles an existing task without syntax', () => {

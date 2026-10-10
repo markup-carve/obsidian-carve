@@ -231,9 +231,15 @@ export function continueVisualList(surface: HTMLElement, selection: Selection | 
   item.after(next); placeCaretAtStart(next); return true
 }
 
+/** A toggled `[>]`/`[-]`/`[?]` item becomes a plain done/open task, not an attribute. */
+function clearTaskState(checkbox: HTMLInputElement): void {
+  checkbox.closest('li')?.removeAttribute('data-task-state')
+}
+
 export function toggleVisualTask(surface: HTMLElement, checkbox: HTMLInputElement): boolean {
   if (checkbox.type !== 'checkbox' || !surface.contains(checkbox) || !checkbox.closest('li')) return false
   checkbox.toggleAttribute('checked', checkbox.checked)
+  clearTaskState(checkbox)
   return true
 }
 
@@ -241,7 +247,7 @@ export function toggleVisualTaskAtSelection(surface: HTMLElement, selection: Sel
   const item = activeListItem(surface, selection)
   if (item) {
     const existing = Array.from(item.children).find((child) => child instanceof HTMLInputElement && child.type === 'checkbox') as HTMLInputElement | undefined
-    if (existing) { existing.checked = !existing.checked; existing.toggleAttribute('checked', existing.checked); return true }
+    if (existing) { existing.checked = !existing.checked; existing.toggleAttribute('checked', existing.checked); clearTaskState(existing); return true }
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.setAttribute('aria-label', 'Toggle task'); item.prepend(checkbox, ' '); return true
   }
   const block = activeBlock(surface, selection); if (!block || block.tagName === 'LI') return false

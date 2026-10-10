@@ -30,7 +30,7 @@ export function livePresentations(
   mapped?: readonly EditorMappedNode[],
 ): LivePresentation[] {
   const nodes = mapped ?? createEditorSession(source).snapshot().nodes
-  const presentations: LivePresentation[] = []
+  const all: LivePresentation[] = []
   const byParent = new Map<string, EditorMappedNode[]>()
   const textByAncestor = new Map<string, { start: number; end: number }>()
   for (const node of nodes) {
@@ -52,8 +52,12 @@ export function livePresentations(
   const textBounds = (node: EditorMappedNode): { start: number; end: number } | null => {
     return textByAncestor.get(node.path) ?? null
   }
+  // A node under the cursor reveals its markers but keeps its line styling, so
+  // a heading does not change size (and shift the text below) on click.
+  const lineOnly: Pick<LivePresentation[], 'push'> = { push: (...items) => all.push(...items.filter((item) => item.kind === 'heading' || item.kind === 'line')) }
   for (const node of nodes) {
-    if (!node.type || (node.type !== 'text' && active(node, selections))) continue
+    if (!node.type) continue
+    const presentations = node.type !== 'text' && active(node, selections) ? lineOnly : all
     const authored = source.slice(node.start, node.end)
     for (const token of node.tokens) {
       if (token.role !== 'attribute' || active(token, selections)) continue
@@ -246,7 +250,7 @@ export function livePresentations(
     presentations.push({ kind: 'mark', from: node.start + 1, to: node.end - 1, className })
     presentations.push({ kind: 'hide', from: node.end - 1, to: node.end })
   }
-  return presentations
+  return all
 }
 
 class MarkerWidget extends WidgetType {

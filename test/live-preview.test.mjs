@@ -9,8 +9,22 @@ test('typed ### heading becomes an H3 presentation outside the cursor', () => {
   ])
 })
 
-test('heading source syntax is revealed while its cursor is active', () => {
-  assert.deepEqual(livePresentations('### Human heading', [{ from: 6, to: 6 }]), [])
+test('heading marker is revealed under the cursor but the heading keeps its size', () => {
+  assert.deepEqual(livePresentations('### Human heading', [{ from: 6, to: 6 }]), [
+    { kind: 'heading', from: 0, to: 17, level: 3 },
+  ])
+  assert.deepEqual(livePresentations('### Human heading', [{ from: 0, to: 0 }]), [
+    { kind: 'heading', from: 0, to: 17, level: 3 },
+  ])
+})
+
+test('list items and table rows keep their line styling under the cursor', () => {
+  assert.deepEqual(livePresentations('- [x] done', [{ from: 8, to: 8 }]), [
+    { kind: 'line', at: 0, className: 'carve-live-list-item' },
+  ])
+  const table = livePresentations('|= A |= B |\n| x | y |', [{ from: 14, to: 14 }])
+  assert.equal(table.filter((item) => item.kind === 'line' && item.className === 'carve-live-table-row').length, 2)
+  assert.equal(table.filter((item) => item.kind === 'mark' && item.className === 'carve-live-table-cell').length, 0)
 })
 
 test('inline markers hide and semantic styling remains', () => {
@@ -69,7 +83,9 @@ test('fenced code hides fences but reveals them while editing the block', () => 
     { kind: 'mark', from: 6, to: 10, className: 'carve-live-code-block-content' },
     { kind: 'hide', from: 10, to: 14 },
   ])
-  assert.deepEqual(livePresentations(source, [{ from: 8, to: 8 }]), [])
+  assert.deepEqual(livePresentations(source, [{ from: 8, to: 8 }]), [
+    { kind: 'line', at: 6, className: 'carve-live-code-block' },
+  ])
 })
 
 test('attached attributes become a readable badge and reveal at the cursor', () => {
@@ -110,7 +126,9 @@ test('admonition fences collapse to a named container outside the cursor', () =>
   const shown = livePresentations(source, [{ from: source.length, to: source.length }])
   assert.ok(shown.some((item) => item.kind === 'widget' && item.label === 'note "Title"'))
   assert.equal(shown.filter((item) => item.kind === 'hide').length, 2)
-  assert.deepEqual(livePresentations(source, [{ from: 19, to: 19 }]), [])
+  assert.deepEqual(livePresentations(source, [{ from: 19, to: 19 }]), [
+    { kind: 'line', at: 17, className: 'carve-live-container' },
+  ])
 })
 
 test('math delimiters hide while their authored content remains mapped', () => {

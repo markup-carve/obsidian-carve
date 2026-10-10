@@ -228,3 +228,5 @@
 @media (forced-colors: active) {
   :is(.carve-preview, .carve-visual-editor, .carve-construct-preview).markdown-rendered blockquote { border-color: CanvasText; }
 }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li:has(> input[type="checkbox"]:first-child) { list-style-type: none; }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li > input[type="checkbox"]:first-child { margin-inline-start: calc(var(--checkbox-size, 1em) * -1.5); }

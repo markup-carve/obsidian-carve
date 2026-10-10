@@ -169,7 +169,8 @@ function diagnosticMessages(report: unknown): string[] {
 export function sourceToVisualDocument(source: string): VisualDocument {
   const { frontmatter, body } = splitFrontmatter(source)
   const protectedBody = protectAdvanced(body)
-  let html = renderCarve(protectedBody.source)
+  // The engine renders task boxes disabled; a disabled box never fires `change`.
+  let html = renderCarve(protectedBody.source).replace(/(<input type="checkbox"[^>]*?) disabled(?=[\s>])/g, '$1')
   for (const [index, item] of protectedBody.opaque.entries()) html = html.split(item.token).join(`<carve-opaque class="carve-visual-opaque ${opaqueBlock(item) ? 'is-block' : 'is-inline'}" data-carve-opaque="${index}" contenteditable="false" role="button" tabindex="0" aria-label="Edit ${escapeHtml(item.kind.replace(/_/g, ' '))} construct" title="Double-click for live source editing; Enter for structured fields">${renderOpaqueConstruct(item)}</carve-opaque>`)
   const converted = htmlToCarve(normalizeVisualHtml(html, protectedBody.opaque), { mode: 'safe' })
   const beforeSemantics = semanticJson(body)
