@@ -4,8 +4,9 @@ import { Window } from 'happy-dom'
 
 const window = new Window()
 Object.assign(globalThis, { document: window.document, Element: window.Element, HTMLLIElement: window.HTMLLIElement, HTMLInputElement: window.HTMLInputElement })
-const { applyVisualInputRule, backspaceVisualListItem, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, wrapVisualSelection } = await import('../dist-test/visual-editing.js')
+const { applyVisualInputRule, backspaceVisualListItem, normalizeVisualTaskCaret, visualTaskCaretKey, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, wrapVisualSelection } = await import('../dist-test/visual-editing.js')
 const { sourceToVisualDocument, visualHtmlToSource } = await import('../dist-test/wysiwyg.js')
+const { carveToHtml } = await import('@markup-carve/carve')
 
 function selectTextNode(element, offset) {
   const range = document.createRange(); range.setStart(element.firstChild, offset); range.collapse(true)
@@ -269,3 +270,79 @@ function placeSelectionEnd(element) {
   const range = document.createRange(); range.selectNodeContents(element); range.collapse(false)
   const selection = document.getSelection(); selection.removeAllRanges(); selection.addRange(range); return selection
 }
+
+function taskSurface(source) {
+  const surface = document.createElement('article'); surface.innerHTML = sourceToVisualDocument(source).html; document.body.append(surface)
+  return surface
+}
+function caretAt(node, offset) {
+  const range = document.createRange(); range.setStart(node, offset); range.collapse(true)
+  const selection = document.getSelection(); selection.removeAllRanges(); selection.addRange(range); return selection
+}
+const caret = () => { const selection = document.getSelection(); return [selection.anchorNode, selection.anchorOffset] }
+
+test('Backspace at a task text removes box and bullet; the text becomes a paragraph where the item stood', () => {
+  for (const [label, place] of [['after the space', (li) => [li.childNodes[1], 1]], ['before the space', (li) => [li.childNodes[1], 0]], ['before the box', (li) => [li, 0]]]) {
+    const surface = taskSurface('- [ ] alpha\n- [ ] beta\n- [ ] gamma\n')
+    const beta = surface.querySelectorAll('li')[1]
+    assert.equal(backspaceVisualListItem(surface, caretAt(...place(beta))), true, label)
+    const source = visualHtmlToSource(surface.innerHTML).source
+    assert.equal(source, '- [ ] alpha\n\nbeta\n\n- [ ] gamma\n', label)
+    // The engine reads it as a paragraph between two lists, not as part of `alpha`.
+    assert.match(carveToHtml(source), /<\/ul>\n<p>beta<\/p>\n<ul>/, label)
+    const [node, offset] = caret()
+    assert.equal(node.nodeName === 'P' ? node.textContent : node.parentElement.textContent, 'beta', label)
+    assert.equal(offset, 0, `${label}: the caret stays at the text start`)
+  }
+})
+
+test('Backspace on the first task of a list does not merge it into the block above', () => {
+  const surface = taskSurface('Intro\n\n- [x] alpha\n- [ ] beta\n')
+  const alpha = surface.querySelector('li')
+  assert.equal(backspaceVisualListItem(surface, caretAt(alpha.childNodes[1], 1)), true)
+  const source = visualHtmlToSource(surface.innerHTML).source
+  assert.equal(source, 'Intro\n\nalpha\n\n- [ ] beta\n')
+  assert.match(carveToHtml(source), /<p>Intro<\/p>\n<p>alpha<\/p>/)
+})
+
+test('Backspace on a nested task leaves a paragraph inside the parent item', () => {
+  const surface = taskSurface('- a\n\n  - [ ] child\n')
+  const child = surface.querySelectorAll('li')[1]
+  assert.equal(backspaceVisualListItem(surface, caretAt(child.childNodes[1], 1)), true)
+  const source = visualHtmlToSource(surface.innerHTML).source
+  assert.match(carveToHtml(source), /<li>\s*<p>a<\/p>\s*<p>child<\/p>\s*<\/li>/, source)
+})
+
+test('Backspace on an empty task ends the list, as Enter does', () => {
+  const surface = taskSurface('- [ ] a\n- [ ] \n')
+  const empty = surface.querySelectorAll('li')[1]
+  assert.equal(backspaceVisualListItem(surface, caretAt(empty, empty.childNodes.length)), true)
+  assert.equal(surface.querySelectorAll('li').length, 1)
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] a\n')
+  assert.equal(caret()[0].nodeName, 'P', 'the caret stays on that line, now a paragraph')
+})
+
+test('a caret on or left of a task box moves to where the text starts', () => {
+  const surface = taskSurface('- [ ] alpha\n- [ ] beta\n')
+  const beta = surface.querySelectorAll('li')[1]
+  for (const [node, offset] of [[beta, 0], [beta, 1], [beta.childNodes[1], 0]]) {
+    assert.equal(normalizeVisualTaskCaret(surface, caretAt(node, offset)), true)
+    assert.deepEqual(caret(), [beta.childNodes[1], 1])
+  }
+  assert.equal(normalizeVisualTaskCaret(surface, caretAt(beta.childNodes[1], 1)), false, 'already after the box')
+  assert.equal(normalizeVisualTaskCaret(surface, caretAt(beta.childNodes[1], 3)), false, 'inside the text')
+  const plain = taskSurface('- plain\n').querySelector('li')
+  assert.equal(normalizeVisualTaskCaret(plain.closest('article'), caretAt(plain.firstChild, 0)), false, 'a plain item has no box')
+})
+
+test('Home goes to the task text; ArrowLeft from there goes to the line above', () => {
+  const surface = taskSurface('- [ ] alpha\n- [ ] beta\n')
+  const [alpha, beta] = surface.querySelectorAll('li')
+  assert.equal(visualTaskCaretKey(surface, 'Home', caretAt(beta.childNodes[1], 3)), true)
+  assert.deepEqual(caret(), [beta.childNodes[1], 1])
+  assert.equal(visualTaskCaretKey(surface, 'ArrowLeft'), true)
+  assert.deepEqual(caret(), [alpha.childNodes[1], ' alpha'.length])
+  assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(beta.childNodes[1], 3)), false, 'inside the text the browser moves')
+  assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(alpha.childNodes[1], 1)), true, 'nothing above: stay after the box')
+  assert.deepEqual(caret(), [alpha.childNodes[1], 1])
+})

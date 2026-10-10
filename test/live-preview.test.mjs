@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Window } from 'happy-dom'
-import { LIVE_PREVIEW_IDLE_MS, createCarveLivePreview, livePresentations, livePreviewDelay, taskToggle } from '../dist-test/live-preview.js'
+import { carveToHtml } from '@markup-carve/carve'
+import { LIVE_PREVIEW_IDLE_MS, createCarveLivePreview, livePresentations, livePreviewDelay, liveTaskMarkers, taskBackspaceEdit, taskCaretTarget, taskToggle } from '../dist-test/live-preview.js'
 
 test('typed ### heading becomes an H3 presentation outside the cursor', () => {
   assert.deepEqual(livePresentations('### Human heading', [{ from: 17, to: 17 }]), [
@@ -75,18 +76,19 @@ test('a checked parent strikes only its own paragraph, not the nested items', ()
   assert.deepEqual(marks, [{ kind: 'mark', from: 6, to: 12, className: 'carve-live-task-done' }])
 })
 
-test('a task keeps its checkbox on the cursor line and reveals the marker only at the box', () => {
+test('a task keeps its checkbox under any caret; only a selection across the marker reveals it', () => {
   const full = [
     { kind: 'line', at: 0, className: 'carve-live-list-item' },
     { kind: 'task', at: 0, state: 'x' },
     { kind: 'hide', from: 0, to: 6 },
     { kind: 'mark', from: 6, to: 10, className: 'carve-live-task-done' },
   ]
-  for (const at of [6, 8, 10]) assert.deepEqual(livePresentations('- [x] done', [{ from: at, to: at }]), full, `caret at ${at}`)
-  for (const at of [0, 2, 3, 4, 5]) {
-    assert.deepEqual(livePresentations('- [x] done', [{ from: at, to: at }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }], `caret at ${at}`)
+  // The editor never leaves a caret on the marker, but the presentation does not depend on it.
+  for (const at of [0, 3, 6, 8, 10]) assert.deepEqual(livePresentations('- [x] done', [{ from: at, to: at }]), full, `caret at ${at}`)
+  assert.deepEqual(livePresentations('- [x] done', [{ from: 6, to: 9 }]), full, 'a selection inside the text')
+  for (const [from, to] of [[4, 8], [0, 10], [0, 6]]) {
+    assert.deepEqual(livePresentations('- [x] done', [{ from, to }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }], `selection ${from}-${to}`)
   }
-  assert.deepEqual(livePresentations('- [x] done', [{ from: 4, to: 8 }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }])
 })
 
 test('a bullet with only a task box, as Enter leaves it, draws a checkbox, not brackets', () => {
@@ -108,9 +110,9 @@ test('a bullet with only a task box, as Enter leaves it, draws a checkbox, not b
       { kind: 'hide', from: 0, to: hideTo },
     ], JSON.stringify(text))
   }
-  // The caret on the box itself reveals the raw marker.
-  assert.deepEqual(livePresentations('- [ ] ', [{ from: 4, to: 4 }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }])
-  assert.deepEqual(livePresentations('- [ ] ', [{ from: 5, to: 5 }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }])
+  // A caret keeps the box; a selection across it shows the raw marker.
+  assert.equal(livePresentations('- [ ] ', [{ from: 6, to: 6 }]).some((item) => item.kind === 'task'), true)
+  assert.deepEqual(livePresentations('- [ ] ', [{ from: 2, to: 5 }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }])
   // Not a box: escaped brackets, an unknown state, a box after other text, an ordered item.
   for (const text of ['- \\[ \\] ', '- [y] ', '- a [ ] ', '1. [ ] ', '- [ ]\n\n  paragraph']) {
     assert.equal(livePresentations(text, [{ from: text.length, to: text.length }]).some((item) => item.kind === 'task'), false, JSON.stringify(text))
@@ -366,4 +368,121 @@ test('an empty half keeps the other half addressable', () => {
       source,
     )
   }
+})
+
+function applyEdit(source, edit) {
+  let next = source
+  for (const change of [...edit.changes].reverse()) next = next.slice(0, change.from) + change.insert + next.slice(change.to)
+  return next
+}
+
+test('Backspace at a task text removes box and bullet; the text becomes a paragraph of its own', () => {
+  const cases = [
+    // [source, caret before, expected source, expected html]
+    ['- [ ] alpha\n- [ ] beta\n- [ ] gamma\n', 'beta', '- [ ] alpha\n\nbeta\n\n- [ ] gamma\n',
+      '<ul>\n  <li><input type="checkbox" disabled aria-label="alpha"> alpha</li>\n</ul>\n<p>beta</p>\n<ul>\n  <li><input type="checkbox" disabled aria-label="gamma"> gamma</li>\n</ul>'],
+    ['- [x] alpha\n', 'alpha', 'alpha\n', '<p>alpha</p>'],
+    ['Intro\n\n- [ ] alpha\n- [ ] beta\n', 'alpha', 'Intro\n\nalpha\n\n- [ ] beta\n', null],
+    ['- a\n  - [ ] child\n', 'child', '- a\n\n  child\n', '<ul>\n  <li><p>a</p>\n    <p>child</p>\n  </li>\n</ul>'],
+    ['> - [ ] a\n> - [ ] b\n', 'b', '> - [ ] a\n>\n> b\n', null],
+  ]
+  for (const [source, word, expected, html] of cases) {
+    const head = source.indexOf(word)
+    const edit = taskBackspaceEdit(source, head)
+    assert.ok(edit, JSON.stringify(source))
+    const next = applyEdit(source, edit)
+    assert.equal(next, expected, JSON.stringify(source))
+    assert.equal(next.slice(edit.head, edit.head + word.length), word, 'the caret stays at the same text')
+    if (html) assert.equal(carveToHtml(next), html)
+    // The engine reads the text as a paragraph, not as part of an item above.
+    assert.match(carveToHtml(next), new RegExp(`<p>${word}</p>`))
+  }
+})
+
+test('Backspace on an empty task line removes the marker, like Enter on it', () => {
+  const source = '- [ ] a\n- [ ] \n'
+  const edit = taskBackspaceEdit(source, 14)
+  assert.deepEqual(edit, { changes: [{ from: 8, to: 14, insert: '' }], head: 8 })
+  assert.equal(applyEdit(source, edit), '- [ ] a\n\n')
+})
+
+test('taskBackspaceEdit leaves other carets to the default Backspace', () => {
+  assert.equal(taskBackspaceEdit('- [ ] alpha', 7), null, 'inside the text')
+  assert.equal(taskBackspaceEdit('- alpha', 2), null, 'a plain bullet shows its marker under the caret')
+  assert.equal(taskBackspaceEdit('```\n- [ ] a\n```\n', 10), null, 'not a task inside code')
+})
+
+test('a caret on or left of a task box goes after it', () => {
+  const source = '- a\n  - [ ] b\n'
+  const markers = liveTaskMarkers(source)
+  assert.deepEqual(markers.map(({ from, to }) => ({ from, to })), [{ from: 6, to: 12 }])
+  for (const head of [4, 5, 6, 9, 11]) assert.equal(taskCaretTarget(source, markers, head), 12, `head ${head}`)
+  for (const head of [3, 12, 13]) assert.equal(taskCaretTarget(source, markers, head), null, `head ${head}`)
+})
+
+async function withEditor(doc, run) {
+  const window = new Window()
+  const saved = {}
+  for (const name of ['window', 'document', 'navigator', 'MutationObserver', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'Node', 'HTMLElement']) {
+    saved[name] = Object.getOwnPropertyDescriptor(globalThis, name)
+    Object.defineProperty(globalThis, name, { value: name === 'window' ? window : window[name], configurable: true, writable: true })
+  }
+  try {
+    const { EditorView, runScopeHandlers } = await import('@codemirror/view')
+    const { EditorState } = await import('@codemirror/state')
+    const { basicSetup } = await import('codemirror')
+    const parent = window.document.createElement('div')
+    window.document.body.appendChild(parent)
+    const view = new EditorView({ parent, state: EditorState.create({ doc, selection: { anchor: 0 }, extensions: [basicSetup, createCarveLivePreview()] }) })
+    for (let i = 0; i < 60 && !parent.querySelector('.carve-live-task-checkbox'); i++) await new Promise((resolve) => setTimeout(resolve, 10))
+    const key = (name) => runScopeHandlers(view, new window.KeyboardEvent('keydown', { key: name }), 'editor')
+    await run(view, key)
+    view.destroy()
+  } finally {
+    for (const [name, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor)
+      else delete globalThis[name]
+    }
+    await window.happyDOM.close()
+  }
+}
+
+test('source view: the caret skips the task marker for clicks, Home and arrows', async () => {
+  await withEditor('top\n\n- [ ] alpha\n- [ ] beta\n', async (view, key) => {
+    const beta = view.state.doc.toString().indexOf('beta')
+    view.dispatch({ selection: { anchor: beta - 6 } })
+    assert.equal(view.state.selection.main.head, beta, 'a caret at the line start (a click left of the box) moves after the box')
+    view.dispatch({ selection: { anchor: beta - 3 } })
+    assert.equal(view.state.selection.main.head, beta, 'never inside the hidden marker')
+    view.dispatch({ selection: { anchor: beta + 2 } })
+    assert.ok(key('Home'))
+    assert.equal(view.state.selection.main.head, beta, 'Home goes to the text start')
+    assert.ok(key('ArrowLeft'))
+    assert.equal(view.state.selection.main.head, beta - 7, 'ArrowLeft goes to the end of the line above')
+    assert.ok(key('ArrowRight'))
+    assert.equal(view.state.selection.main.head, beta, 'ArrowRight from the line above lands after the box')
+    // A selection across the marker may start on it.
+    view.dispatch({ selection: { anchor: beta - 6, head: beta + 4 } })
+    assert.deepEqual([view.state.selection.main.from, view.state.selection.main.to], [beta - 6, beta + 4])
+  })
+})
+
+test('source view: Backspace at a task text removes box and bullet and keeps the caret on the text', async () => {
+  await withEditor('top\n\n- [ ] alpha\n- [ ] beta\n- [ ] \n', async (view, key) => {
+    const beta = view.state.doc.toString().indexOf('beta')
+    view.dispatch({ selection: { anchor: beta } })
+    assert.ok(key('Backspace'))
+    assert.equal(view.state.doc.toString(), 'top\n\n- [ ] alpha\n\nbeta\n\n- [ ] \n')
+    const head = view.state.selection.main.head
+    assert.equal(view.state.doc.sliceString(head, head + 4), 'beta')
+    view.dispatch({ selection: { anchor: view.state.doc.length - 1 } })
+    assert.ok(key('Backspace'))
+    assert.equal(view.state.doc.toString(), 'top\n\n- [ ] alpha\n\nbeta\n\n\n')
+    assert.equal(view.state.selection.main.head, view.state.doc.length - 1, 'the caret stays on the emptied line')
+    view.dispatch({ selection: { anchor: 0 } })
+    // A second @codemirror/state copy under @codemirror/commands made every cursor command
+    // dispatch a selection the view could not read, so the caret fell back to native movement.
+    assert.ok(key('ArrowRight'), 'CodeMirror commands share one @codemirror/state with the view')
+    assert.equal(view.state.selection.main.head, 1)
+  })
 })
