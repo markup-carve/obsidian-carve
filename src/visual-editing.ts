@@ -17,11 +17,14 @@ function directList(item: HTMLLIElement): HTMLElement | null {
   return Array.from(item.children).find((child) => /^(?:UL|OL)$/.test(child.tagName)) as HTMLElement | undefined ?? null
 }
 
+// Content that has no text of its own: an image or a protected construct is not an empty item.
+const TEXTLESS_CONTENT = 'img,picture,svg,video,audio,iframe,carve-opaque,hr,table'
+
 function itemContentEmpty(item: HTMLLIElement): boolean {
   const clone = item.cloneNode(true) as HTMLLIElement
   directList(clone)?.remove()
   for (const child of Array.from(clone.querySelectorAll('input,br'))) child.remove()
-  return !(clone.textContent ?? '').trim()
+  return !(clone.textContent ?? '').trim() && !clone.querySelector(TEXTLESS_CONTENT)
 }
 
 /** Apply familiar Markdown input rules to the rendered DOM, never to saved source. */
@@ -315,7 +318,7 @@ function caretBeforeTaskText(surface: HTMLElement, selection: Selection | null):
   if (order < 0) return { item, box, start, before: true }
   // Inside a leading `<strong>` and the like, offset 0 is still where the text starts.
   probe.setEnd(container, range.startOffset)
-  return order === 0 || !probe.toString() ? { item, box, start, before: false } : null
+  return order === 0 || (!probe.toString() && !probe.cloneContents().querySelector(TEXTLESS_CONTENT)) ? { item, box, start, before: false } : null
 }
 
 function setCaret(node: Node, offset: number, selection: Selection | null): void {

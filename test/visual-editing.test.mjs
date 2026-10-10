@@ -366,3 +366,14 @@ test('the start of formatted task text counts as the task text start', () => {
   assert.equal(backspaceVisualListItem(surface, caretAt(inside, 0)), true)
   assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] alpha\n\n*bold* text\n')
 })
+
+test('an image in a task is content: Backspace after it is left to the browser', () => {
+  const surface = document.createElement('article'); document.body.append(surface)
+  surface.innerHTML = '<ul><li><input type="checkbox"> <img src="a.png" alt="a"></li><li><input type="checkbox"> <img src="b.png" alt="b">text</li></ul>'
+  const [only, mixed] = surface.querySelectorAll('li')
+  assert.equal(backspaceVisualListItem(surface, caretAt(only, only.childNodes.length)), false, 'an image-only task is not empty')
+  assert.ok(surface.querySelector('img[alt="a"]'))
+  assert.equal(backspaceVisualListItem(surface, caretAt(mixed, 3)), false, 'after the image')
+  assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(mixed, 3)), false)
+  assert.ok(mixed.querySelector('input'))
+})
