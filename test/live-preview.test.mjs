@@ -20,7 +20,7 @@ test('heading marker is revealed under the cursor but the heading keeps its size
 })
 
 test('list items and table rows keep their line styling under the cursor', () => {
-  assert.deepEqual(livePresentations('- [x] done', [{ from: 8, to: 8 }]), [
+  assert.deepEqual(livePresentations('- item', [{ from: 4, to: 4 }]), [
     { kind: 'line', at: 0, className: 'carve-live-list-item' },
   ])
   const table = livePresentations('|= A |= B |\n| x | y |', [{ from: 14, to: 14 }])
@@ -75,6 +75,63 @@ test('a checked parent strikes only its own paragraph, not the nested items', ()
   assert.deepEqual(marks, [{ kind: 'mark', from: 6, to: 12, className: 'carve-live-task-done' }])
 })
 
+test('a task keeps its checkbox on the cursor line and reveals the marker only at the box', () => {
+  const full = [
+    { kind: 'line', at: 0, className: 'carve-live-list-item' },
+    { kind: 'task', at: 0, state: 'x' },
+    { kind: 'hide', from: 0, to: 6 },
+    { kind: 'mark', from: 6, to: 10, className: 'carve-live-task-done' },
+  ]
+  for (const at of [6, 8, 10]) assert.deepEqual(livePresentations('- [x] done', [{ from: at, to: at }]), full, `caret at ${at}`)
+  for (const at of [0, 2, 3, 4, 5]) {
+    assert.deepEqual(livePresentations('- [x] done', [{ from: at, to: at }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }], `caret at ${at}`)
+  }
+  assert.deepEqual(livePresentations('- [x] done', [{ from: 4, to: 8 }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }])
+})
+
+test('a bullet with only a task box, as Enter leaves it, draws a checkbox, not brackets', () => {
+  // The engine reads a content-less box as a plain item whose text is `[ ]`.
+  const source = '- [x] done\n- [ ] '
+  const end = source.length
+  const pending = livePresentations(source, [{ from: end, to: end }]).filter((item) => (item.at ?? item.from) >= 11)
+  assert.deepEqual(pending, [
+    { kind: 'line', at: 11, className: 'carve-live-list-item' },
+    { kind: 'task', at: 11, state: ' ' },
+    { kind: 'hide', from: 11, to: 17 },
+  ])
+  assert.equal(pending.some((item) => item.kind === 'widget'), false, 'no bullet glyph in front of the box')
+  for (const [text, state, hideTo] of [['* [x] ', 'x', 6], ['- [>]', '>', 5], ['- [_]  ', '_', 7], ['- [?] ', '?', 6], ['- [-] ', '-', 6], ['- [X] ', 'X', 6]]) {
+    // With no caret on the line; `- [>]` with the caret after `]` touches the box.
+    assert.deepEqual(livePresentations(text, []), [
+      { kind: 'line', at: 0, className: 'carve-live-list-item' },
+      { kind: 'task', at: 0, state },
+      { kind: 'hide', from: 0, to: hideTo },
+    ], JSON.stringify(text))
+  }
+  // The caret on the box itself reveals the raw marker.
+  assert.deepEqual(livePresentations('- [ ] ', [{ from: 4, to: 4 }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }])
+  assert.deepEqual(livePresentations('- [ ] ', [{ from: 5, to: 5 }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }])
+  // Not a box: escaped brackets, an unknown state, a box after other text, an ordered item.
+  for (const text of ['- \\[ \\] ', '- [y] ', '- a [ ] ', '1. [ ] ']) {
+    assert.equal(livePresentations(text, [{ from: text.length, to: text.length }]).some((item) => item.kind === 'task'), false, JSON.stringify(text))
+  }
+})
+
+test('a content-less box above a nested list still draws a checkbox', () => {
+  const source = '- [>] \n  - nested'
+  const parent = livePresentations(source, [{ from: source.length, to: source.length }]).filter((item) => (item.at ?? item.from) < 7)
+  assert.deepEqual(parent, [
+    { kind: 'line', at: 0, className: 'carve-live-list-item' },
+    { kind: 'task', at: 0, state: '>' },
+    { kind: 'hide', from: 0, to: 6 },
+  ])
+})
+
+test('taskToggle toggles a content-less box too', () => {
+  assert.deepEqual(taskToggle('- [ ] ', 0), { from: 3, to: 4, insert: 'x' })
+  assert.deepEqual(taskToggle('* [x]', 0), { from: 3, to: 4, insert: ' ' })
+})
+
 test('taskToggle checks an open or extended task and unchecks a done one', () => {
   assert.deepEqual(taskToggle('- [ ] a', 0), { from: 3, to: 4, insert: 'x' })
   assert.deepEqual(taskToggle('- [X] a', 0), { from: 3, to: 4, insert: ' ' })
@@ -117,6 +174,38 @@ test('the source-view task widget is a checkbox that toggles the marker on click
     assert.equal(view.state.doc.toString(), doc)
     const refreshed = await (async () => { await new Promise((resolve) => setTimeout(resolve, 300)); return Array.from(parent.querySelectorAll('input.carve-live-task-checkbox')) })()
     assert.deepEqual(refreshed.map((box) => box.checked), [false, true, false])
+    view.destroy()
+  } finally {
+    for (const [name, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor)
+      else delete globalThis[name]
+    }
+    await window.happyDOM.close()
+  }
+})
+
+test('after Enter on a task the new line shows a clickable checkbox, also under the caret', async () => {
+  const window = new Window()
+  const saved = {}
+  for (const name of ['window', 'document', 'navigator', 'MutationObserver', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'Node', 'HTMLElement']) {
+    saved[name] = Object.getOwnPropertyDescriptor(globalThis, name)
+    Object.defineProperty(globalThis, name, { value: name === 'window' ? window : window[name], configurable: true, writable: true })
+  }
+  try {
+    const { EditorView } = await import('@codemirror/view')
+    const { EditorState } = await import('@codemirror/state')
+    const parent = window.document.createElement('div')
+    window.document.body.appendChild(parent)
+    const doc = '- [x] done\n- [ ] '
+    const view = new EditorView({ parent, state: EditorState.create({ doc, selection: { anchor: doc.length }, extensions: [createCarveLivePreview()] }) })
+    for (let i = 0; i < 60 && parent.querySelectorAll('.carve-live-task-checkbox').length < 2; i++) await new Promise((resolve) => setTimeout(resolve, 10))
+    const boxes = Array.from(parent.querySelectorAll('input.carve-live-task-checkbox'))
+    assert.deepEqual(boxes.map((box) => box.checked), [true, false])
+    const lines = Array.from(parent.querySelectorAll('.cm-line')).map((line) => line.textContent)
+    assert.deepEqual(lines, ['done', ''], 'neither the bracket text nor a bullet glyph is shown')
+    boxes[1].click()
+    assert.equal(view.state.doc.toString(), '- [x] done\n- [x] ')
+    assert.equal(view.state.selection.main.head, doc.length)
     view.destroy()
   } finally {
     for (const [name, descriptor] of Object.entries(saved)) {

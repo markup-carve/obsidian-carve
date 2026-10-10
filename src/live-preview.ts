@@ -24,6 +24,25 @@ function active(range: { start: number; end: number }, selections: readonly Pick
     : selection.from < range.end && selection.to > range.start)
 }
 
+interface TaskBox { state: string; boxEnd: number; hideEnd: number; content: { start: number; end: number } | null }
+
+/**
+ * The task box of a list item. A box with nothing after it (`- [ ] `, what Enter
+ * writes after a task) is a plain item whose text is `[ ]` to the engine, since a
+ * task needs content; it is still drawn as a checkbox while the author fills it in.
+ */
+function taskBox(source: string, node: EditorMappedNode, children: readonly EditorMappedNode[] | undefined): TaskBox | null {
+  const content = children?.find((candidate) => candidate.type === 'paragraph')
+  if (!content || content.start <= node.start) return null
+  const marker = source.slice(node.start, content.start)
+  const task = /^[-*] [ \t]*\[([ xX_>?-])\]( [ \t]*)$/.exec(marker)
+  if (task) return { state: task[1]!, boxEnd: content.start - task[2]!.length, hideEnd: content.start, content }
+  const pending = /^\[([ xX_>?-])\]$/.exec(source.slice(content.start, content.end))
+  if (!pending || !/^[-*] [ \t]*$/.test(marker) || content.end > node.end) return null
+  const blank = /^[ \t]*/.exec(source.slice(content.end))![0]
+  return { state: pending[1]!, boxEnd: content.end, hideEnd: content.end + blank.length, content: null }
+}
+
 /** Semantic presentation derived from carve-js's document-space source map. */
 export function livePresentations(
   source: string,
@@ -58,7 +77,10 @@ export function livePresentations(
   const lineOnly: Pick<LivePresentation[], 'push'> = { push: (...items) => all.push(...items.filter((item) => item.kind === 'heading' || item.kind === 'line')) }
   for (const node of nodes) {
     if (!node.type) continue
-    const presentations = node.type !== 'text' && active(node, selections) ? lineOnly : all
+    const box = node.type === 'list_item' ? taskBox(source, node, byParent.get(`${node.path}/children`)) : null
+    // A task keeps its checkbox under the cursor, as in Obsidian; only a caret on the marker itself reveals it.
+    const revealed = box ? selections.some((selection) => selection.from <= box.boxEnd && selection.to >= node.start) : active(node, selections)
+    const presentations = node.type !== 'text' && revealed ? lineOnly : all
     const authored = source.slice(node.start, node.end)
     for (const token of node.tokens) {
       if (token.role !== 'attribute' || active(token, selections)) continue
@@ -89,18 +111,22 @@ export function livePresentations(
       continue
     }
     if (node.type === 'list_item') {
+      if (box) {
+        presentations.push({ kind: 'line', at: node.start, className: 'carve-live-list-item' })
+        presentations.push({ kind: 'task', at: node.start, state: box.state })
+        presentations.push({ kind: 'hide', from: node.start, to: box.hideEnd })
+        if (box.content && /[xX-]/.test(box.state)) presentations.push({ kind: 'mark', from: box.content.start, to: box.content.end, className: box.state === '-' ? 'carve-live-task-cancelled' : 'carve-live-task-done' })
+        continue
+      }
       const content = byParent.get(`${node.path}/children`)?.find((candidate) => candidate.type === 'paragraph')
       if (!content || content.start <= node.start) continue
       const marker = source.slice(node.start, content.start)
-      const task = /^[-*] [ \t]*\[([ xX_>?-])\] [ \t]*$/.exec(marker)
       const ordered = /^(\d+|[A-Za-z])[.)][ \t]+$/.exec(marker)
       const bullet = /^[-*] [ \t]*$/.exec(marker)
-      if (!task && !ordered && !bullet) continue
+      if (!ordered && !bullet) continue
       presentations.push({ kind: 'line', at: node.start, className: 'carve-live-list-item' })
-      if (task) presentations.push({ kind: 'task', at: node.start, state: task[1]! })
-      else presentations.push({ kind: 'widget', at: node.start, label: ordered ? marker.trim() : '•', className: 'carve-live-list-marker' })
+      presentations.push({ kind: 'widget', at: node.start, label: ordered ? marker.trim() : '•', className: 'carve-live-list-marker' })
       presentations.push({ kind: 'hide', from: node.start, to: content.start })
-      if (task && /[xX-]/.test(task[1]!)) presentations.push({ kind: 'mark', from: content.start, to: content.end, className: task[1] === '-' ? 'carve-live-task-cancelled' : 'carve-live-task-done' })
       continue
     }
     if (node.type === 'link') {

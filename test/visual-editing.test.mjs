@@ -186,10 +186,72 @@ test('Enter continues normal and task lists and exits an empty list item', () =>
   const surface = document.createElement('article'); surface.innerHTML = '<ul><li><input type="checkbox"> task</li></ul>'; document.body.append(surface)
   placeSelectionEnd(surface.querySelector('li'))
   assert.equal(continueVisualList(surface), true)
-  assert.match(surface.innerHTML, /<li><input type="checkbox" aria-label="Toggle task"> <br><\/li>/)
+  assert.match(surface.innerHTML, /<li><input type="checkbox" aria-label="Toggle task"> <br data-carve-placeholder=""><\/li>/)
   const empty = surface.querySelectorAll('li')[1]; placeSelection(empty)
   assert.equal(continueVisualList(surface), true)
   assert.equal(surface.innerHTML, '<ul><li><input type="checkbox"> task</li></ul><p><br></p>')
+})
+
+function caretIn(element, offset) {
+  const range = document.createRange(); range.setStart(element, offset); range.collapse(true)
+  const selection = document.getSelection(); selection.removeAllRanges(); selection.addRange(range); return selection
+}
+
+test('Enter after a seeded task gives a new checkbox item; typing lands after the box', () => {
+  const visual = sourceToVisualDocument('- [x] done\n')
+  const surface = document.createElement('article'); surface.innerHTML = visual.html; document.body.append(surface)
+  const first = surface.querySelector('li'); caretIn(first.lastChild, first.lastChild.textContent.length)
+  assert.equal(continueVisualList(surface), true)
+  const next = surface.querySelectorAll('li')[1]
+  assert.equal(next.firstChild.tagName, 'INPUT')
+  assert.equal(next.firstChild.checked, false)
+  assert.doesNotMatch(next.textContent, /\[/)
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [x] done\n- [ ] \n')
+  assert.equal(insertPlainText(surface, 'a', document.getSelection()), true)
+  assert.equal(next.firstChild.tagName, 'INPUT', 'the box stays first')
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [x] done\n- [ ] a\n')
+})
+
+test('Enter in the middle of a task moves the tail after the new box and puts the caret before it', () => {
+  const surface = document.createElement('article'); surface.innerHTML = '<ul><li><input type="checkbox"> abcd</li></ul>'; document.body.append(surface)
+  caretIn(surface.querySelector('li').lastChild, 3)
+  assert.equal(continueVisualList(surface), true)
+  insertPlainText(surface, 'X', document.getSelection())
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] ab\n- [ ] Xcd\n')
+})
+
+test('Enter in the middle of a plain item puts the caret at the start of the moved text', () => {
+  const surface = document.createElement('article'); surface.innerHTML = '<ul><li>abcd</li></ul>'; document.body.append(surface)
+  caretIn(surface.querySelector('li').firstChild, 2)
+  assert.equal(continueVisualList(surface), true)
+  insertPlainText(surface, 'X', document.getSelection())
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- ab\n- Xcd\n')
+})
+
+test('turning an item into a task keeps the caret where it was', () => {
+  const surface = document.createElement('article'); surface.innerHTML = '<ul><li>abc</li></ul>'; document.body.append(surface)
+  caretIn(surface.querySelector('li').firstChild, 2)
+  assert.equal(toggleVisualTaskAtSelection(surface), true)
+  insertPlainText(surface, 'X', document.getSelection())
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] abXc\n')
+})
+
+test('a content-less task box in the source opens as a checkbox in the visual editor', () => {
+  const source = '- [x] done\n- [ ] \n'
+  const visual = sourceToVisualDocument(source)
+  const surface = document.createElement('article'); surface.innerHTML = visual.html; document.body.append(surface)
+  const items = Array.from(surface.querySelectorAll('li'))
+  assert.deepEqual(items.map((item) => [item.firstElementChild?.tagName, item.querySelector('input')?.checked, item.textContent.trim()]), [['INPUT', true, 'done'], ['INPUT', false, '']])
+  assert.equal(visual.semanticLoss, false)
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, source)
+  for (const [pending, checked] of [['* [x] \n', true], ['- [>]\n', false]]) {
+    const seeded = sourceToVisualDocument(pending).html
+    assert.match(seeded, /<input type="checkbox"/, pending)
+    assert.doesNotMatch(seeded, /\[[x>]\]|CARVEPENDING/, pending)
+    assert.equal(/checked/.test(seeded), checked, pending)
+  }
+  // Escaped brackets are text, not a box.
+  assert.doesNotMatch(sourceToVisualDocument('- \\[ \\]\n').html, /<input/)
 })
 
 function placeSelection(element) {

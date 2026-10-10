@@ -227,8 +227,25 @@ export function continueVisualList(surface: HTMLElement, selection: Selection | 
     for (const input of Array.from(fragment.querySelectorAll('input'))) input.remove()
     if (fragment.textContent || fragment.querySelector?.('*')) next.append(fragment)
   }
-  if (!next.textContent?.trim()) next.append(document.createElement('br'))
-  item.after(next); placeCaretAtStart(next); return true
+  if (!next.textContent?.trim()) next.append(task ? placeholderBreak() : document.createElement('br'))
+  item.after(next)
+  // After the box, never before it: typed text must land in the item's content.
+  if (task) placeCaretAfterTaskBox(next); else placeCaretAtStart(next)
+  return true
+}
+
+/** An empty-line break the source conversion drops, so an empty task item is not a hard break. */
+function placeholderBreak(): HTMLBRElement {
+  const br = document.createElement('br'); br.setAttribute('data-carve-placeholder', ''); return br
+}
+
+function placeCaretAfterTaskBox(item: HTMLLIElement): void {
+  const space = item.firstChild?.nextSibling
+  const range = document.createRange()
+  if (space?.nodeType === 3 && space.textContent?.startsWith(' ')) range.setStart(space, 1)
+  else range.setStart(item, 1)
+  range.collapse(true)
+  const selection = document.getSelection(); selection?.removeAllRanges(); selection?.addRange(range)
 }
 
 /** A toggled `[>]`/`[-]`/`[?]` item becomes a plain done/open task, not an attribute. */
