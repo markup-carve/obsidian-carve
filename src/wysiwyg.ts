@@ -178,12 +178,21 @@ function freshToken(base: string, ...texts: string[]): string {
  * stand-in so it renders as a checkbox while the author is still filling it in.
  */
 function renderWithPendingTasks(source: string): string {
+  // Skip the extra parse unless some line could be one.
+  if (!/^[ \t>]*[-*] [ \t]*\[[ xX_>?-]\][ \t]*$/m.test(source)) return renderCarve(source)
   const nodes = createEditorSession(source).snapshot().nodes
   const token = freshToken('CARVEPENDINGTASKX9F3A', source)
+  const childrenOf = new Map<string, typeof nodes[number][]>()
+  for (const node of nodes) {
+    const child = /^(.*)\/children\/\d+$/.exec(node.path)
+    if (!child) continue
+    const siblings = childrenOf.get(child[1]!)
+    if (siblings) siblings.push(node); else childrenOf.set(child[1]!, [node])
+  }
   const at: number[] = []
   for (const node of nodes) {
     if (node.type !== 'list_item') continue
-    const children = nodes.filter((candidate) => candidate.path.startsWith(`${node.path}/children/`) && !candidate.path.slice(node.path.length + 10).includes('/'))
+    const children = childrenOf.get(node.path) ?? []
     const content = children[0]
     if (content?.type !== 'paragraph' || content.start <= node.start || children.some((child) => child !== content && child.type !== 'list')) continue
     if (/^[-*] [ \t]*$/.test(source.slice(node.start, content.start)) && /^\[[ xX_>?-]\]$/.test(source.slice(content.start, content.end))) at.push(content.end)
