@@ -272,9 +272,23 @@ function endEmptyItem(item: HTMLLIElement, list: HTMLElement): boolean {
 }
 
 /** Turn a list item into a paragraph where it stands, splitting the list around it. */
+const BLOCK_TAGS = /^(?:P|UL|OL|BLOCKQUOTE|PRE|DIV|TABLE|HR|H[1-6]|CARVE-OPAQUE)$/
+
+function blankText(node: Node): boolean { return node.nodeType === 3 && !(node.textContent ?? '').trim() }
+
+/**
+ * Turn a list item into a paragraph where it stands, splitting the list around it.
+ * The item's own text becomes the paragraph; its later blocks (nested lists, more
+ * paragraphs) follow in their order.
+ */
 function itemToParagraph(item: HTMLLIElement, list: HTMLElement): HTMLParagraphElement {
-  const descendants = directList(item); descendants?.remove()
-  const paragraph = document.createElement('p'); while (item.firstChild) paragraph.append(item.firstChild)
+  const nodes = Array.from(item.childNodes)
+  const firstBlock = nodes.findIndex((node) => node instanceof Element && BLOCK_TAGS.test(node.tagName) && (node.tagName !== 'CARVE-OPAQUE' || node.classList.contains('is-block')))
+  const leading = firstBlock < 0 ? nodes : nodes.slice(0, firstBlock)
+  const blocks = (firstBlock < 0 ? [] : nodes.slice(firstBlock)).filter((node) => !blankText(node))
+  let paragraph: HTMLParagraphElement
+  if (leading.every(blankText) && blocks[0]?.nodeName === 'P') paragraph = blocks.shift() as HTMLParagraphElement
+  else { paragraph = document.createElement('p'); paragraph.append(...leading) }
   const before = document.createElement(list.tagName.toLowerCase())
   const after = document.createElement(list.tagName.toLowerCase())
   let passed = false
@@ -282,9 +296,32 @@ function itemToParagraph(item: HTMLLIElement, list: HTMLElement): HTMLParagraphE
     if (sibling === item) { passed = true; continue }
     ;(passed ? after : before).append(sibling)
   }
-  if (descendants?.tagName === after.tagName) { while (after.firstChild) descendants.append(after.firstChild) }
-  list.replaceWith(...(before.children.length ? [before] : []), paragraph, ...(descendants ? [descendants] : []), ...(after.children.length ? [after] : []))
+  // Following items join a trailing nested list of the same kind, as before the split.
+  const last = blocks.at(-1)
+  if (last instanceof Element && last.tagName === after.tagName) { while (after.firstChild) last.append(after.firstChild) }
+  list.replaceWith(...(before.children.length ? [before] : []), paragraph, ...blocks, ...(after.children.length ? [after] : []))
   return paragraph
+}
+
+/** Where a caret at the end of an item's own content goes (before its nested list). */
+function itemContentEnd(item: HTMLLIElement): { node: Node; offset: number } {
+  const nested = directList(item)
+  let index = nested ? Array.prototype.indexOf.call(item.childNodes, nested) : item.childNodes.length
+  while (index > 0 && (item.childNodes[index - 1]!.nodeName === 'BR' || blankText(item.childNodes[index - 1]!))) index--
+  const previous = item.childNodes[index - 1]
+  return previous?.nodeType === 3 ? { node: previous, offset: (previous.textContent ?? '').length } : { node: item, offset: index }
+}
+
+/** The line above a list item: the deepest last item before it, or its parent item's own text. */
+function lineAboveItem(item: HTMLLIElement): { node: Node; offset: number } | null {
+  const sibling = item.previousElementSibling
+  if (sibling instanceof HTMLLIElement) {
+    let deepest: HTMLLIElement = sibling
+    for (let last = directList(deepest)?.lastElementChild; last instanceof HTMLLIElement; last = directList(deepest)?.lastElementChild) deepest = last
+    return itemContentEnd(deepest)
+  }
+  const parent = item.parentElement?.parentElement
+  return parent instanceof HTMLLIElement ? itemContentEnd(parent) : null
 }
 
 /** The checkbox that makes `item` a task: its first child, ignoring whitespace. */
@@ -364,7 +401,7 @@ export function visualTaskCaretKey(surface: HTMLElement, key: string, selection:
   }
   const found = caretBeforeTaskText(surface, selection)
   if (!found) return false
-  const previous = previousTextEnd(surface, found.box)
+  const previous = lineAboveItem(found.item) ?? previousTextEnd(surface, found.box)
   if (previous) setCaret(previous.node, previous.offset, selection)
   else setCaret(found.start.node, found.start.offset, selection)
   return true

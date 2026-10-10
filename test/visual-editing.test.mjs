@@ -412,3 +412,24 @@ test('a task box has no space text after it in the visual editor, so an empty it
   caretIs(created, 1, 'the caret sits right after the box')
   assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] alpha\n- [ ] \n- [x] beta\n- [ ] \n', 'the source keeps its spaces')
 })
+
+test('Backspace on a task with later blocks keeps them in order', () => {
+  const surface = taskSurface('- [ ] a\n\n  - child\n\n  more\n')
+  const item = surface.querySelector('li')
+  assert.equal(backspaceVisualListItem(surface, caretAt(item, 1)), true)
+  const source = visualHtmlToSource(surface.innerHTML).source
+  assert.ok(source.indexOf('a') < source.indexOf('child') && source.indexOf('child') < source.indexOf('more'), JSON.stringify(source))
+  assert.doesNotMatch(source, /\[ \]/)
+})
+
+test('ArrowLeft from a task stops at an empty task or the parent item above', () => {
+  const surface = taskSurface('- [ ] alpha\n- [ ] \n- [ ] beta\n')
+  const [, empty, beta] = surface.querySelectorAll('li')
+  assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(beta, 1)), true)
+  caretIs(empty, 1, 'after the empty box')
+  const nested = taskSurface('- [ ] parent\n\n  - [ ] child\n')
+  const child = nested.querySelectorAll('li')[1]
+  assert.equal(visualTaskCaretKey(nested, 'ArrowLeft', caretAt(child, 1)), true)
+  const [node, offset] = caret()
+  assert.equal(node.textContent.slice(0, offset).trim().endsWith('parent'), true)
+})
