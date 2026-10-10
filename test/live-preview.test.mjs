@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { LIVE_PREVIEW_IDLE_MS, livePresentations, livePreviewDelay } from '../dist-test/live-preview.js'
+import { Window } from 'happy-dom'
+import { LIVE_PREVIEW_IDLE_MS, createCarveLivePreview, livePresentations, livePreviewDelay, taskToggle } from '../dist-test/live-preview.js'
 
 test('typed ### heading becomes an H3 presentation outside the cursor', () => {
   assert.deepEqual(livePresentations('### Human heading', [{ from: 17, to: 17 }]), [
@@ -49,13 +50,81 @@ test('list and task syntax becomes visible semantic markers', () => {
     { kind: 'hide', from: 0, to: 2 },
   ])
   assert.deepEqual(livePresentations('- [x] done', [{ from: 10, to: 10 }]).slice(1), [
-    { kind: 'widget', at: 0, label: '☑', className: 'carve-live-task-marker' },
+    { kind: 'task', at: 0, state: 'x' },
     { kind: 'hide', from: 0, to: 6 },
+    { kind: 'mark', from: 6, to: 10, className: 'carve-live-task-done' },
+  ])
+  assert.deepEqual(livePresentations('- [ ] open', [{ from: 10, to: 10 }]).slice(1), [
+    { kind: 'task', at: 0, state: ' ' },
+    { kind: 'hide', from: 0, to: 6 },
+  ])
+  assert.deepEqual(livePresentations('- [-] dropped', [{ from: 13, to: 13 }]).slice(1), [
+    { kind: 'task', at: 0, state: '-' },
+    { kind: 'hide', from: 0, to: 6 },
+    { kind: 'mark', from: 6, to: 13, className: 'carve-live-task-cancelled' },
   ])
   assert.deepEqual(livePresentations('- [>] later', [{ from: 11, to: 11 }]).slice(1), [
-    { kind: 'widget', at: 0, label: '☐', className: 'carve-live-task-marker' },
+    { kind: 'task', at: 0, state: '>' },
     { kind: 'hide', from: 0, to: 6 },
   ])
+})
+
+test('a checked parent strikes only its own paragraph, not the nested items', () => {
+  const source = '- [x] parent\n\n  - [ ] child\n'
+  const marks = livePresentations(source, [{ from: source.length, to: source.length }]).filter((item) => item.kind === 'mark')
+  assert.deepEqual(marks, [{ kind: 'mark', from: 6, to: 12, className: 'carve-live-task-done' }])
+})
+
+test('taskToggle checks an open or extended task and unchecks a done one', () => {
+  assert.deepEqual(taskToggle('- [ ] a', 0), { from: 3, to: 4, insert: 'x' })
+  assert.deepEqual(taskToggle('- [X] a', 0), { from: 3, to: 4, insert: ' ' })
+  assert.deepEqual(taskToggle('x\n  * [>] a', 4), { from: 7, to: 8, insert: 'x' })
+  assert.equal(taskToggle('- plain', 0), null)
+})
+
+test('the source-view task widget is a checkbox that toggles the marker on click', async () => {
+  const window = new Window()
+  const saved = {}
+  for (const name of ['window', 'document', 'navigator', 'MutationObserver', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'Node', 'HTMLElement']) {
+    saved[name] = Object.getOwnPropertyDescriptor(globalThis, name)
+    Object.defineProperty(globalThis, name, { value: name === 'window' ? window : window[name], configurable: true, writable: true })
+  }
+  try {
+    const { EditorView } = await import('@codemirror/view')
+    const { EditorState } = await import('@codemirror/state')
+    const parent = window.document.createElement('div')
+    window.document.body.appendChild(parent)
+    const doc = 'top\n\n- [ ] open\n- [x] done\n- [>] later\n'
+    const view = new EditorView({ parent, state: EditorState.create({ doc, selection: { anchor: 0 }, extensions: [createCarveLivePreview()] }) })
+    const boxes = async () => {
+      for (let i = 0; i < 60 && !parent.querySelector('.carve-live-task-checkbox'); i++) await new Promise((resolve) => setTimeout(resolve, 10))
+      return Array.from(parent.querySelectorAll('input.carve-live-task-checkbox'))
+    }
+    const found = await boxes()
+    assert.deepEqual(found.map((box) => [box.type, box.classList.contains('task-list-item-checkbox'), box.checked, box.dataset.taskState ?? null]), [
+      ['checkbox', true, false, null],
+      ['checkbox', true, true, null],
+      ['checkbox', true, false, '>'],
+    ])
+    found[0].click()
+    assert.equal(view.state.doc.toString(), 'top\n\n- [x] open\n- [x] done\n- [>] later\n')
+    assert.equal(found[0].checked, false, 'the box follows the source, not its own native toggle')
+    found[1].click()
+    assert.equal(view.state.doc.toString(), 'top\n\n- [x] open\n- [ ] done\n- [>] later\n')
+    assert.equal(view.state.selection.main.head, 0)
+    // A quick reversal (an undo) before the preview refreshes must not leave a stale box.
+    view.dispatch({ changes: [{ from: 8, to: 9, insert: ' ' }, { from: 19, to: 20, insert: 'x' }] })
+    assert.equal(view.state.doc.toString(), doc)
+    const refreshed = await (async () => { await new Promise((resolve) => setTimeout(resolve, 300)); return Array.from(parent.querySelectorAll('input.carve-live-task-checkbox')) })()
+    assert.deepEqual(refreshed.map((box) => box.checked), [false, true, false])
+    view.destroy()
+  } finally {
+    for (const [name, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor)
+      else delete globalThis[name]
+    }
+    await window.happyDOM.close()
+  }
 })
 
 test('links show their label and reveal their destination at the cursor', () => {

@@ -9,6 +9,7 @@ export type LivePresentation =
   | { kind: 'hide'; from: number; to: number }
   | { kind: 'mark'; from: number; to: number; className: string }
   | { kind: 'widget'; at: number; label: string; className: string }
+  | { kind: 'task'; at: number; state: string }
   | { kind: 'image'; at: number; destination: string; alt: string }
 
 export const LIVE_PREVIEW_IDLE_MS = 120
@@ -95,10 +96,11 @@ export function livePresentations(
       const ordered = /^(\d+|[A-Za-z])[.)][ \t]+$/.exec(marker)
       const bullet = /^[-*] [ \t]*$/.exec(marker)
       if (!task && !ordered && !bullet) continue
-      const label = task ? (task[1]!.toLowerCase() === 'x' ? '☑' : task[1] === '-' ? '⊟' : '☐') : ordered ? marker.trim() : '•'
       presentations.push({ kind: 'line', at: node.start, className: 'carve-live-list-item' })
-      presentations.push({ kind: 'widget', at: node.start, label, className: task ? 'carve-live-task-marker' : 'carve-live-list-marker' })
+      if (task) presentations.push({ kind: 'task', at: node.start, state: task[1]! })
+      else presentations.push({ kind: 'widget', at: node.start, label: ordered ? marker.trim() : '•', className: 'carve-live-list-marker' })
       presentations.push({ kind: 'hide', from: node.start, to: content.start })
+      if (task && /[xX-]/.test(task[1]!)) presentations.push({ kind: 'mark', from: content.start, to: content.end, className: task[1] === '-' ? 'carve-live-task-cancelled' : 'carve-live-task-done' })
       continue
     }
     if (node.type === 'link') {
@@ -259,6 +261,36 @@ class MarkerWidget extends WidgetType {
   eq(other: MarkerWidget): boolean { return this.label === other.label && this.className === other.className }
 }
 
+/** The edit that toggles the task marker of the list item starting at `at`: `x` unchecks, any other state checks. */
+export function taskToggle(source: string, at: number): { from: number; to: number; insert: string } | null {
+  const marker = /^[-*] [ \t]*\[([ xX_>?-])\]/.exec(source.slice(at, at + 64))
+  if (!marker) return null
+  const from = at + marker[0].length - 2
+  return { from, to: from + 1, insert: /[xX]/.test(marker[1]!) ? ' ' : 'x' }
+}
+
+class TaskWidget extends WidgetType {
+  constructor(private state: string) { super() }
+  toDOM(view: EditorView): HTMLElement {
+    const box = document.createElement('input')
+    box.type = 'checkbox'
+    box.className = 'task-list-item-checkbox carve-live-task-checkbox'
+    box.checked = /[xX]/.test(this.state)
+    box.tabIndex = -1
+    if (!/[ xX]/.test(this.state)) box.dataset.taskState = this.state
+    // Keep the caret where it is; the click edits the source, like Obsidian's own tasks.
+    box.addEventListener('mousedown', (event) => event.preventDefault())
+    // The box only mirrors the source: a native toggle would outlive an undo, since eq() reuses this DOM.
+    box.addEventListener('click', (event) => {
+      event.preventDefault()
+      const change = view.state.readOnly ? null : taskToggle(view.state.doc.toString(), view.posAtDOM(box))
+      if (change) view.dispatch({ changes: change, userEvent: 'input' })
+    })
+    return box
+  }
+  eq(other: TaskWidget): boolean { return this.state === other.state }
+}
+
 class ImageWidget extends WidgetType {
   constructor(private source: string | null, private alt: string) { super() }
   toDOM(): HTMLElement {
@@ -276,6 +308,7 @@ function decorations(session: EditorSession, selections: readonly SelectionRange
     if (item.kind === 'hide') return [Decoration.replace({}).range(item.from, item.to)]
     if (item.kind === 'mark') return [Decoration.mark({ class: item.className }).range(item.from, item.to)]
     if (item.kind === 'widget') return [Decoration.widget({ widget: new MarkerWidget(item.label, item.className), side: -1 }).range(item.at)]
+    if (item.kind === 'task') return [Decoration.widget({ widget: new TaskWidget(item.state), side: -1 }).range(item.at)]
     if (item.kind === 'image') return [Decoration.widget({ widget: new ImageWidget(resolveImage?.(item.destination) ?? null, item.alt), side: -1 }).range(item.at)]
     if (item.kind === 'line') return [Decoration.line({ class: item.className }).range(item.at)]
     return [Decoration.line({ class: `carve-live-heading carve-live-heading-${item.level}` }).range(item.from)]
