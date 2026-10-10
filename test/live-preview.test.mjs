@@ -38,6 +38,10 @@ test('list and task syntax becomes visible semantic markers', () => {
     { kind: 'widget', at: 0, label: '☑', className: 'carve-live-task-marker' },
     { kind: 'hide', from: 0, to: 6 },
   ])
+  assert.deepEqual(livePresentations('- [>] later', [{ from: 11, to: 11 }]).slice(1), [
+    { kind: 'widget', at: 0, label: '☐', className: 'carve-live-task-marker' },
+    { kind: 'hide', from: 0, to: 6 },
+  ])
 })
 
 test('links show their label and reveal their destination at the cursor', () => {

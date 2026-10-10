@@ -87,9 +87,9 @@ export function livePresentations(
       const content = byParent.get(`${node.path}/children`)?.find((candidate) => candidate.type === 'paragraph')
       if (!content || content.start <= node.start) continue
       const marker = source.slice(node.start, content.start)
-      const task = /^[-+*][ \t]+\[([ xX-])\][ \t]+$/.exec(marker)
+      const task = /^[-*] [ \t]*\[([ xX_>?-])\] [ \t]*$/.exec(marker)
       const ordered = /^(\d+|[A-Za-z])[.)][ \t]+$/.exec(marker)
-      const bullet = /^[-+*][ \t]+$/.exec(marker)
+      const bullet = /^[-*] [ \t]*$/.exec(marker)
       if (!task && !ordered && !bullet) continue
       const label = task ? (task[1]!.toLowerCase() === 'x' ? '☑' : task[1] === '-' ? '⊟' : '☐') : ordered ? marker.trim() : '•'
       presentations.push({ kind: 'line', at: node.start, className: 'carve-live-list-item' })
