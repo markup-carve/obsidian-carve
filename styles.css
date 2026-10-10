@@ -242,6 +242,8 @@
 }
 :is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li:has(> input[type="checkbox"]:first-child) { list-style-type: none; }
 :is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li > input[type="checkbox"]:first-child { margin-inline-start: calc(var(--checkbox-size, 1em) * -1.5); opacity: 1; }
+/* The visual editor drops the space after a task box (it collapses on an empty item), so the gap is a margin. */
+.carve-visual-editor li > input[type="checkbox"]:first-child { margin-inline-end: .3em; }
 /* Done and cancelled items fade and strike their own text only. A decoration
    cannot be undone on a descendant, so a nested list is made an atomic inline box. */
 :is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li:is(:has(> input[type="checkbox"]:checked:first-child), [data-task-state="-"]) {

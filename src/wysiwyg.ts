@@ -219,7 +219,9 @@ export function sourceToVisualDocument(source: string): VisualDocument {
   const { frontmatter, body } = splitFrontmatter(source)
   const protectedBody = protectAdvanced(body)
   // The engine renders task boxes disabled; a disabled box never fires `change`.
-  let html = renderWithPendingTasks(protectedBody.source).replace(/(<input type="checkbox"[^>]*?) disabled(?=[\s>])/g, '$1')
+  // The gap after a task box is CSS here: a space before an empty item's `<br>` collapses,
+  // so the caret would touch the box and the text jump right once typed.
+  let html = renderWithPendingTasks(protectedBody.source).replace(/(<input type="checkbox"[^>]*?) disabled(?=[\s>])/g, '$1').replace(/(<li\b[^>]*>\s*<input type="checkbox"[^>]*>)[ \t]+/g, '$1')
   for (const [index, item] of protectedBody.opaque.entries()) html = html.split(item.token).join(`<carve-opaque class="carve-visual-opaque ${opaqueBlock(item) ? 'is-block' : 'is-inline'}" data-carve-opaque="${index}" contenteditable="false" role="button" tabindex="0" aria-label="Edit ${escapeHtml(item.kind.replace(/_/g, ' '))} construct" title="Double-click for live source editing; Enter for structured fields">${renderOpaqueConstruct(item)}</carve-opaque>`)
   const converted = visualHtmlToCarve(normalizeVisualHtml(html, protectedBody.opaque))
   const beforeSemantics = semanticJson(body)

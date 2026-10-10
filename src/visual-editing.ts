@@ -37,7 +37,7 @@ export function applyVisualInputRule(surface: HTMLElement, selection: Selection 
     const task = /^\[([ xX])\]\s/.exec(text)
     if (!task) return false
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task[1]!.toLowerCase() === 'x'; checkbox.setAttribute('aria-label', 'Toggle task')
-    block.textContent = text.slice(task[0].length); block.prepend(checkbox, ' '); placeCaretAtEnd(block); return true
+    block.textContent = text.slice(task[0].length); block.prepend(checkbox); placeCaretAtEnd(block); return true
   }
   if (!/^(?:P|DIV)$/.test(block.tagName)) return false
   const heading = /^(#{1,6})\s/.exec(text)
@@ -205,7 +205,7 @@ export function continueVisualList(surface: HTMLElement, selection: Selection | 
   if (itemContentEmpty(item)) return endEmptyItem(item, list)
   const next = document.createElement('li')
   const task = Array.from(item.children).find((child) => child instanceof HTMLInputElement && child.type === 'checkbox') as HTMLInputElement | undefined
-  if (task) { const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.setAttribute('aria-label', 'Toggle task'); next.append(checkbox, ' ') }
+  if (task) { const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.setAttribute('aria-label', 'Toggle task'); next.append(checkbox) }
   const range = rangeIn(surface, selection)
   if (range?.collapsed && item.contains(range.startContainer)) {
     const tail = range.cloneRange(); tail.setEnd(item, item.childNodes.length)
@@ -252,11 +252,11 @@ export function toggleVisualTaskAtSelection(surface: HTMLElement, selection: Sel
   if (item) {
     const existing = Array.from(item.children).find((child) => child instanceof HTMLInputElement && child.type === 'checkbox') as HTMLInputElement | undefined
     if (existing) { existing.checked = !existing.checked; existing.toggleAttribute('checked', existing.checked); clearTaskState(existing); return true }
-    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.setAttribute('aria-label', 'Toggle task'); item.prepend(checkbox, ' '); return true
+    const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.setAttribute('aria-label', 'Toggle task'); item.prepend(checkbox); return true
   }
   const block = activeBlock(surface, selection); if (!block || block.tagName === 'LI') return false
   const list = document.createElement('ul'); const created = document.createElement('li'); const checkbox = document.createElement('input')
-  checkbox.type = 'checkbox'; checkbox.setAttribute('aria-label', 'Toggle task'); created.append(checkbox, ' ')
+  checkbox.type = 'checkbox'; checkbox.setAttribute('aria-label', 'Toggle task'); created.append(checkbox)
   while (block.firstChild) created.append(block.firstChild)
   list.append(created); block.replaceWith(list); placeCaretAtEnd(created); return true
 }

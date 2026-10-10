@@ -67,3 +67,8 @@ test('source-view task checkboxes map the extended states and done text', () => 
   for (const [state, style] of [['>', 'solid'], ['?', 'dotted'], ['_', 'dashed']]) assert.match(css, new RegExp(`\\.carve-live-task-checkbox\\[data-task-state="${state.replace('?', '\\?')}"\\] \\{ outline: 1px ${style}`))
   assert.match(css, /\.carve-editor \.carve-live-task-done,\n\.carve-editor \.carve-live-task-cancelled \{\n  color: var\(--checklist-done-color, var\(--text-muted\)\);\n  text-decoration: var\(--checklist-done-decoration, line-through\);/)
 })
+
+test('the visual editor draws the gap after a task box as a margin, the preview keeps the space', () => {
+  assert.equal(render('carve-visual-editor markdown-rendered', '- [ ] open').box('open').marginInlineEnd, '.3em')
+  assert.notEqual(render('carve-preview markdown-rendered', '- [ ] open').box('open').marginInlineEnd, '.3em')
+})

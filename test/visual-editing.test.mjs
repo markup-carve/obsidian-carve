@@ -44,7 +44,7 @@ test('horizontal-rule and code-fence input rules create visual blocks', () => {
 test('typing a task marker inside a visual list creates a real checkbox', () => {
   const surface = document.createElement('article'); surface.innerHTML = '<ul><li>[ ] </li></ul>'; document.body.append(surface)
   assert.equal(applyVisualInputRule(surface, selectTextNode(surface.querySelector('li'), 4)), true)
-  assert.equal(surface.innerHTML, '<ul><li><input type="checkbox" aria-label="Toggle task"> </li></ul>')
+  assert.equal(surface.innerHTML, '<ul><li><input type="checkbox" aria-label="Toggle task"></li></ul>')
 })
 
 test('plain-text paste uses Range APIs and cannot inject markup', () => {
@@ -187,7 +187,7 @@ test('Enter continues normal and task lists and exits an empty list item', () =>
   const surface = document.createElement('article'); surface.innerHTML = '<ul><li><input type="checkbox"> task</li></ul>'; document.body.append(surface)
   placeSelectionEnd(surface.querySelector('li'))
   assert.equal(continueVisualList(surface), true)
-  assert.match(surface.innerHTML, /<li><input type="checkbox" aria-label="Toggle task"> <br data-carve-placeholder=""><\/li>/)
+  assert.match(surface.innerHTML, /<li><input type="checkbox" aria-label="Toggle task"><br data-carve-placeholder=""><\/li>/)
   const empty = surface.querySelectorAll('li')[1]; placeSelection(empty)
   assert.equal(continueVisualList(surface), true)
   assert.equal(surface.innerHTML, '<ul><li><input type="checkbox"> task</li></ul><p><br></p>')
@@ -280,9 +280,15 @@ function caretAt(node, offset) {
   const selection = document.getSelection(); selection.removeAllRanges(); selection.addRange(range); return selection
 }
 const caret = () => { const selection = document.getSelection(); return [selection.anchorNode, selection.anchorOffset] }
+// Compares by identity: a deep diff of two happy-dom nodes never finishes.
+function caretIs(node, offset, message) {
+  const [actual, actualOffset] = caret()
+  assert.ok(actual === node, message)
+  assert.equal(actualOffset, offset, message)
+}
 
 test('Backspace at a task text removes box and bullet; the text becomes a paragraph where the item stood', () => {
-  for (const [label, place] of [['after the space', (li) => [li.childNodes[1], 1]], ['before the space', (li) => [li.childNodes[1], 0]], ['before the box', (li) => [li, 0]]]) {
+  for (const [label, place] of [['at the text', (li) => [li.childNodes[1], 0]], ['after the box', (li) => [li, 1]], ['before the box', (li) => [li, 0]]]) {
     const surface = taskSurface('- [ ] alpha\n- [ ] beta\n- [ ] gamma\n')
     const beta = surface.querySelectorAll('li')[1]
     assert.equal(backspaceVisualListItem(surface, caretAt(...place(beta))), true, label)
@@ -299,7 +305,7 @@ test('Backspace at a task text removes box and bullet; the text becomes a paragr
 test('Backspace on the first task of a list does not merge it into the block above', () => {
   const surface = taskSurface('Intro\n\n- [x] alpha\n- [ ] beta\n')
   const alpha = surface.querySelector('li')
-  assert.equal(backspaceVisualListItem(surface, caretAt(alpha.childNodes[1], 1)), true)
+  assert.equal(backspaceVisualListItem(surface, caretAt(alpha.childNodes[1], 0)), true)
   const source = visualHtmlToSource(surface.innerHTML).source
   assert.equal(source, 'Intro\n\nalpha\n\n- [ ] beta\n')
   assert.match(carveToHtml(source), /<p>Intro<\/p>\n<p>alpha<\/p>/)
@@ -308,7 +314,7 @@ test('Backspace on the first task of a list does not merge it into the block abo
 test('Backspace on a nested task leaves a paragraph inside the parent item', () => {
   const surface = taskSurface('- a\n\n  - [ ] child\n')
   const child = surface.querySelectorAll('li')[1]
-  assert.equal(backspaceVisualListItem(surface, caretAt(child.childNodes[1], 1)), true)
+  assert.equal(backspaceVisualListItem(surface, caretAt(child.childNodes[1], 0)), true)
   const source = visualHtmlToSource(surface.innerHTML).source
   assert.match(carveToHtml(source), /<li>\s*<p>a<\/p>\s*<p>child<\/p>\s*<\/li>/, source)
 })
@@ -325,12 +331,16 @@ test('Backspace on an empty task ends the list, as Enter does', () => {
 test('a caret on or left of a task box moves to where the text starts', () => {
   const surface = taskSurface('- [ ] alpha\n- [ ] beta\n')
   const beta = surface.querySelectorAll('li')[1]
-  for (const [node, offset] of [[beta, 0], [beta, 1], [beta.childNodes[1], 0]]) {
-    assert.equal(normalizeVisualTaskCaret(surface, caretAt(node, offset)), true)
-    assert.deepEqual(caret(), [beta.childNodes[1], 1])
-  }
-  assert.equal(normalizeVisualTaskCaret(surface, caretAt(beta.childNodes[1], 1)), false, 'already after the box')
+  assert.equal(normalizeVisualTaskCaret(surface, caretAt(beta, 0)), true, 'left of the box')
+  caretIs(beta, 1)
+  assert.equal(normalizeVisualTaskCaret(surface, caretAt(beta, 1)), false, 'already after the box')
+  assert.equal(normalizeVisualTaskCaret(surface, caretAt(beta.childNodes[1], 0)), false, 'the same place, in the text')
   assert.equal(normalizeVisualTaskCaret(surface, caretAt(beta.childNodes[1], 3)), false, 'inside the text')
+  // A space after the box, as older content may hold, is skipped too.
+  const spaced = document.createElement('article'); spaced.innerHTML = '<ul><li><input type="checkbox"> gamma</li></ul>'; document.body.append(spaced)
+  const gamma = spaced.querySelector('li')
+  assert.equal(normalizeVisualTaskCaret(spaced, caretAt(gamma.childNodes[1], 0)), true)
+  caretIs(gamma.childNodes[1], 1)
   const plain = taskSurface('- plain\n').querySelector('li')
   assert.equal(normalizeVisualTaskCaret(plain.closest('article'), caretAt(plain.firstChild, 0)), false, 'a plain item has no box')
 })
@@ -339,12 +349,12 @@ test('Home goes to the task text; ArrowLeft from there goes to the line above', 
   const surface = taskSurface('- [ ] alpha\n- [ ] beta\n')
   const [alpha, beta] = surface.querySelectorAll('li')
   assert.equal(visualTaskCaretKey(surface, 'Home', caretAt(beta.childNodes[1], 3)), true)
-  assert.deepEqual(caret(), [beta.childNodes[1], 1])
+  caretIs(beta, 1)
   assert.equal(visualTaskCaretKey(surface, 'ArrowLeft'), true)
-  assert.deepEqual(caret(), [alpha.childNodes[1], ' alpha'.length])
+  caretIs(alpha.childNodes[1], 'alpha'.length)
   assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(beta.childNodes[1], 3)), false, 'inside the text the browser moves')
-  assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(alpha.childNodes[1], 1)), true, 'nothing above: stay after the box')
-  assert.deepEqual(caret(), [alpha.childNodes[1], 1])
+  assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(alpha.childNodes[1], 0)), true, 'nothing above: stay after the box')
+  caretIs(alpha, 1)
 })
 
 test('an empty task with nested items keeps them when Backspace or Enter ends it', () => {
@@ -362,7 +372,7 @@ test('the start of formatted task text counts as the task text start', () => {
   const inside = bold.querySelector('strong').firstChild
   assert.equal(normalizeVisualTaskCaret(surface, caretAt(inside, 0)), false, 'typing there stays bold')
   assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(inside, 0)), true)
-  assert.deepEqual(caret(), [alpha.childNodes[1], ' alpha'.length])
+  caretIs(alpha.childNodes[1], 'alpha'.length)
   assert.equal(backspaceVisualListItem(surface, caretAt(inside, 0)), true)
   assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] alpha\n\n*bold* text\n')
 })
@@ -389,4 +399,16 @@ test('ending an empty task in the middle of a list keeps the document order', ()
     assert.equal(caret()[0].nodeName, 'P', 'the caret stays where the item was')
     assert.equal(caret()[0].nextElementSibling?.querySelector('li')?.textContent, 'child')
   }
+})
+
+test('a task box has no space text after it in the visual editor, so an empty item has no collapsed gap', () => {
+  // A space before the empty item's `<br>` collapses: the caret touched the box and typed text jumped right.
+  const surface = taskSurface('- [ ] alpha\n- [x] beta\n- [ ] \n')
+  for (const box of surface.querySelectorAll('li > input')) assert.equal(box.nextSibling?.nodeType === 3 && /^\s/.test(box.nextSibling.textContent), false)
+  const alpha = surface.querySelector('li')
+  assert.equal(continueVisualList(surface, caretAt(alpha.childNodes[1], 'alpha'.length)), true)
+  const created = surface.querySelectorAll('li')[1]
+  assert.equal(created.innerHTML, '<input type="checkbox" aria-label="Toggle task"><br data-carve-placeholder="">')
+  caretIs(created, 1, 'the caret sits right after the box')
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] alpha\n- [ ] \n- [x] beta\n- [ ] \n', 'the source keeps its spaces')
 })
