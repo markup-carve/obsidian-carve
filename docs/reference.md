@@ -98,8 +98,13 @@ an unchecked task box), Enter in the middle splits at the caret, Backspace at
 the boundary joins or outdents, and Enter on an empty item exits or outdents the
 list. Task boxes are directly clickable and save their checked state.
 Source and Live split apply the equivalent operations to authored indentation
-and continue bullet, numbered, and task markers; selected source rows indent as
-a group.
+and continue bullet, numbered, and task markers. Tab moves an item to the
+content column of the item above it, so it nests as that item's child (three
+columns under `1.`, four under `10.`); Shift+Tab moves it back to its parent's
+marker column. The item's continuation lines and child items move with it, and a
+numbered item renumbers to fit the list it joins. Tab on the first item of a
+list, or Shift+Tab on a top-level item, keeps the editor's default. Each item in
+a multi-line selection moves once.
 
 Source mode exposes the same common writing operations without leaving the
 lossless editor: all six heading levels; strong, emphasis, strike, highlight,
