@@ -246,6 +246,9 @@ test('a content-less task box in the source opens as a checkbox in the visual ed
   assert.equal(visualHtmlToSource(surface.innerHTML).source, source)
   for (const [pending, checked] of [['* [x] \n', true], ['- [>]\n', false]]) {
     const seeded = sourceToVisualDocument(pending).html
+    // Through the DOM, where `data-task-state=">"` is serialized with a raw `>`.
+    const host = document.createElement('article'); host.innerHTML = seeded
+    assert.equal(visualHtmlToSource(host.innerHTML).source, pending.replace(/^\* /, '- ').replace(/\]\n$/, '] \n'), pending)
     assert.match(seeded, /<input type="checkbox"/, pending)
     assert.doesNotMatch(seeded, /\[[x>]\]|CARVEPENDING/, pending)
     assert.equal(/checked/.test(seeded), checked, pending)

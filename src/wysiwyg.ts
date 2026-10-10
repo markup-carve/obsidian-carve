@@ -198,7 +198,10 @@ function renderWithPendingTasks(source: string): string {
 function visualHtmlToCarve(html: string): ReturnType<typeof htmlToCarve> {
   const token = freshToken('CARVEEMPTYTASKX9F3A', html)
   let found = false
-  const marked = html.replace(/(<li\b[^>]*>\s*<input\b[^>]*\btype="checkbox"[^>]*>)(?:\s|&nbsp;|<br\b[^>]*>)*(?=<\/li>|<ul\b|<ol\b)/gi, (_whole, open: string) => { found = true; return `${open} ${token}` })
+  // Attribute values can hold `>` (`data-task-state=">"`), so tags are matched quote-aware.
+  const attributes = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`
+  const emptyTask = new RegExp(String.raw`(<li\b${attributes}>\s*<input\b${attributes}\btype="checkbox"${attributes}>)(?:\s|&nbsp;|<br\b${attributes}>)*(?=<\/li>|<ul\b|<ol\b)`, 'gi')
+  const marked = html.replace(emptyTask, (_whole, open: string) => { found = true; return `${open} ${token}` })
   const converted = htmlToCarve(marked, { mode: 'safe' })
   return found ? { ...converted, value: converted.value.split(token).join('') } : converted
 }
