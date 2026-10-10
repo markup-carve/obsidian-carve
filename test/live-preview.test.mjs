@@ -410,6 +410,17 @@ test('Backspace on an empty task line removes the marker, like Enter on it', () 
   const promoted = applyEdit(nested, taskBackspaceEdit(nested, 14))
   assert.equal(promoted, '- [ ] a\n\n\n- child\n- [ ] b\n')
   assert.doesNotMatch(carveToHtml(promoted), /a[^<]*<ul>/, 'child is not a child of a')
+  // Under an existing parent the task's children move to its column and stay with the parent.
+  const underParent = '- parent\n\n  - [ ] \n\n    - child\n'
+  const kept = applyEdit(underParent, taskBackspaceEdit(underParent, underParent.indexOf('[ ] ') + 4))
+  assert.equal(kept, '- parent\n\n\n\n  - child\n')
+  assert.match(carveToHtml(kept), /<li>\s*(?:<p>)?parent(?:<\/p>)?\s*<ul>\s*<li>child<\/li>/)
+  // Inside a quote the prefix stays and the children are measured inside it.
+  const quoted = '> - [ ] \n>\n>   - child\n'
+  const quotedEdit = taskBackspaceEdit(quoted, 8)
+  assert.equal(applyEdit(quoted, quotedEdit), '>\n>\n> - child\n')
+  assert.equal(quotedEdit.head, 1)
+  assert.match(carveToHtml(applyEdit(quoted, quotedEdit)), /<blockquote>\s*<ul>\s*<li>child<\/li>/)
 })
 
 test('taskBackspaceEdit leaves other carets to the default Backspace', () => {

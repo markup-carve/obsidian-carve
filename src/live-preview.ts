@@ -406,24 +406,29 @@ export function taskBackspaceEdit(source: string, head: number): TaskBackspaceEd
  * to its column, so they do not become children of the item above.
  */
 function emptyTaskEdit(source: string, lineStart: number, lineEnd: number, itemEnd: number): TaskBackspaceEdit | null {
-  const changes: TaskBackspaceEdit['changes'] = [{ from: lineStart, to: lineEnd, insert: '' }]
-  const indent = /^[ \t]*/.exec(source.slice(lineStart, lineEnd))![0].length
+  // A blockquote prefix stays; indentation is measured inside it.
+  const QUOTE = /^(?:[ \t]*>[ \t]?)*/
+  const quote = QUOTE.exec(source.slice(lineStart, lineEnd))![0]
+  const changes: TaskBackspaceEdit['changes'] = [{ from: lineStart, to: lineEnd, insert: quote.replace(/[ \t]+$/, '') }]
+  const indent = /^[ \t]*/.exec(source.slice(lineStart + quote.length, lineEnd))![0].length
   const restEnd = source[itemEnd - 1] === '\n' ? itemEnd - 1 : itemEnd
   if (restEnd > lineEnd + 1) {
-    const lines = source.slice(lineEnd + 1, restEnd).split('\n')
-    const shift = Math.min(...lines.filter((line) => line.trim()).map((line) => /^ */.exec(line)![0].length)) - indent
+    const lines = source.slice(lineEnd + 1, restEnd).split('\n').map((line) => ({ line, quote: QUOTE.exec(line)![0].length }))
+    const content = lines.filter(({ line, quote: length }) => line.slice(length).trim())
+    const shift = Math.min(...content.map(({ line, quote: length }) => /^ */.exec(line.slice(length))![0].length)) - indent
     if (!Number.isFinite(shift) || shift < 0) return null
     let offset = lineEnd + 1
-    for (const line of lines) {
-      if (line.trim()) changes.push({ from: offset, to: offset + shift, insert: '' })
+    for (const { line, quote: length } of lines) {
+      if (shift && line.slice(length).trim()) changes.push({ from: offset + length, to: offset + length + shift, insert: '' })
       offset += line.length + 1
     }
   }
-  const result = { changes, head: lineStart }
+  const result = { changes, head: lineStart + changes[0]!.insert.length }
   let next = source
   for (const change of [...changes].reverse()) next = next.slice(0, change.from) + change.insert + next.slice(change.to)
-  // No item may now span the emptied line, which would mean its children were adopted.
-  return createEditorSession(next).snapshot().nodes.every((node) => node.type !== 'list_item' || node.end <= lineStart || node.start >= lineStart) ? result : null
+  // Only the task's ancestors may span the emptied line; any other item there adopted its children.
+  const spanning = (text: string): number => createEditorSession(text).snapshot().nodes.filter((node) => node.type === 'list_item' && node.start < lineStart && node.end > lineStart).length
+  return spanning(next) <= spanning(source) ? result : null
 }
 
 const setTaskMarkers = StateEffect.define<DecorationSet>()
