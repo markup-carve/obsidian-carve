@@ -56,7 +56,7 @@ function childrenByParent(nodes: readonly EditorMappedNode[]): Map<string, Edito
   return byParent
 }
 
-export interface TaskMarker { from: number; to: number; content: { start: number; end: number } | null }
+export interface TaskMarker { from: number; to: number; itemEnd: number; content: { start: number; end: number } | null }
 
 /** The hidden `- [ ] ` of every task item: from the bullet to where the item's text starts. */
 export function liveTaskMarkers(source: string, mapped?: readonly EditorMappedNode[]): TaskMarker[] {
@@ -66,7 +66,7 @@ export function liveTaskMarkers(source: string, mapped?: readonly EditorMappedNo
   for (const node of nodes) {
     if (node.type !== 'list_item') continue
     const box = taskBox(source, node, byParent.get(`${node.path}/children`))
-    if (box) markers.push({ from: node.start, to: box.hideEnd, content: box.content })
+    if (box) markers.push({ from: node.start, to: box.hideEnd, itemEnd: node.end, content: box.content })
   }
   return markers
 }
@@ -383,17 +383,22 @@ export function taskBackspaceEdit(source: string, head: number): TaskBackspaceEd
     if (!BLANK_LINE.test(source.slice(previousStart, lineStart - 1))) { changes.push({ from: lineStart, to: lineStart, insert: `${blank}\n` }); shift = blank.length + 1 }
   }
   changes.push({ from: marker.from, to: marker.to, insert: '' })
-  const paragraphEnd = source.indexOf('\n', marker.content.end)
-  if (paragraphEnd >= 0) {
-    const nextEnd = source.indexOf('\n', paragraphEnd + 1)
-    const next = source.slice(paragraphEnd + 1, nextEnd < 0 ? source.length : nextEnd)
-    if (!BLANK_LINE.test(next)) changes.push({ from: paragraphEnd, to: paragraphEnd, insert: `\n${blank}` })
+  // After the text, and after the rest of the item, so neither folds what follows.
+  const separate = (end: number): void => {
+    const lineEnd = source.indexOf('\n', end)
+    if (lineEnd < 0 || changes.some((change) => change.from === lineEnd)) return
+    const nextEnd = source.indexOf('\n', lineEnd + 1)
+    if (!BLANK_LINE.test(source.slice(lineEnd + 1, nextEnd < 0 ? source.length : nextEnd))) changes.push({ from: lineEnd, to: lineEnd, insert: `\n${blank}` })
   }
+  separate(marker.content.end)
+  separate(Math.max(marker.content.end, source[marker.itemEnd - 1] === '\n' ? marker.itemEnd - 1 : marker.itemEnd))
   const result = { changes, head: marker.from + shift }
-  // The engine decides: the text must now open a paragraph of its own.
   let next = source
   for (const change of [...changes].reverse()) next = next.slice(0, change.from) + change.insert + next.slice(change.to)
-  return createEditorSession(next).snapshot().nodes.some((node) => node.type === 'paragraph' && node.start === result.head) ? result : null
+  // The engine decides: the text opens a paragraph of its own and no other item is lost.
+  const items = (nodes: readonly EditorMappedNode[]): number => nodes.filter((node) => node.type === 'list_item').length
+  const reparsed = createEditorSession(next).snapshot().nodes
+  return reparsed.some((node) => node.type === 'paragraph' && node.start === result.head) && items(reparsed) === items(createEditorSession(source).snapshot().nodes) - 1 ? result : null
 }
 
 const setTaskMarkers = StateEffect.define<DecorationSet>()

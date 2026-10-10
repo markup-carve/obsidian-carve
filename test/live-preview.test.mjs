@@ -385,6 +385,7 @@ test('Backspace at a task text removes box and bullet; the text becomes a paragr
     ['Intro\n\n- [ ] alpha\n- [ ] beta\n', 'alpha', 'Intro\n\nalpha\n\n- [ ] beta\n', null],
     ['- a\n  - [ ] child\n', 'child', '- a\n\n  child\n', '<ul>\n  <li><p>a</p>\n    <p>child</p>\n  </li>\n</ul>'],
     ['> - [ ] a\n> - [ ] b\n', 'b', '> - [ ] a\n>\n> b\n', null],
+    ['- [ ] first\n\n  second\n- [ ] next\n', 'first', 'first\n\n  second\n\n- [ ] next\n', '<p>first</p>\n<p>second</p>\n<ul>\n  <li><input type="checkbox" disabled aria-label="next"> next</li>\n</ul>'],
   ]
   for (const [source, word, expected, html] of cases) {
     const head = source.indexOf(word)
