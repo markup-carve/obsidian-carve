@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Window } from 'happy-dom'
 import { carveToHtml } from '@markup-carve/carve'
-import { LIVE_PREVIEW_IDLE_MS, createCarveLivePreview, livePresentations, livePreviewDelay, liveTaskMarkers, taskBackspaceEdit, taskCaretTarget, taskToggle } from '../dist-test/live-preview.js'
+import { LIVE_PREVIEW_IDLE_MS, LIVE_PREVIEW_MAX_SOURCE_LENGTH, createCarveLivePreview, livePresentations, livePreviewDelay, liveTaskMarkers, taskBackspaceEdit, taskCaretTarget, taskToggle } from '../dist-test/live-preview.js'
 
 test('typed ### heading becomes an H3 presentation outside the cursor', () => {
   assert.deepEqual(livePresentations('### Human heading', [{ from: 17, to: 17 }]), [
@@ -491,5 +491,16 @@ test('source view: Backspace at a task text removes box and bullet and keeps the
     // dispatch a selection the view could not read, so the caret fell back to native movement.
     assert.ok(key('ArrowRight'), 'CodeMirror commands share one @codemirror/state with the view')
     assert.equal(view.state.selection.main.head, 1)
+  })
+})
+
+test('past the size limit the task markers stop steering the caret', async () => {
+  await withEditor('top\n\n- [ ] alpha\n', async (view) => {
+    const alpha = view.state.doc.toString().indexOf('alpha')
+    view.dispatch({ selection: { anchor: alpha - 6 } })
+    assert.equal(view.state.selection.main.head, alpha)
+    view.dispatch({ changes: { from: view.state.doc.length, insert: 'x'.repeat(LIVE_PREVIEW_MAX_SOURCE_LENGTH) } })
+    view.dispatch({ selection: { anchor: alpha - 6 } })
+    assert.equal(view.state.selection.main.head, alpha - 6)
   })
 })

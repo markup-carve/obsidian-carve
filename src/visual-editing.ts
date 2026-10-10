@@ -265,9 +265,10 @@ export function toggleVisualTaskAtSelection(surface: HTMLElement, selection: Sel
 function endEmptyItem(item: HTMLLIElement, list: HTMLElement): boolean {
   const parentItem = list.parentElement?.closest<HTMLLIElement>('li')
   if (parentItem) { parentItem.after(item); if (!list.children.length) list.remove(); placeCaretAtStart(item); return true }
-  // Nested items stay, as a list after the new paragraph.
-  const nested = directList(item)
-  const paragraph = document.createElement('p'); paragraph.append(document.createElement('br')); list.after(paragraph, ...(nested ? [nested] : [])); item.remove(); if (!list.children.length) list.remove(); placeCaretAtStart(paragraph); return true
+  // The paragraph takes the item's place; nested items follow it as a list.
+  for (const child of Array.from(item.childNodes)) if (!/^(?:UL|OL)$/.test(child.nodeName)) child.remove()
+  item.removeAttribute('data-task-state')
+  const paragraph = itemToParagraph(item, list); paragraph.append(document.createElement('br')); placeCaretAtStart(paragraph); return true
 }
 
 /** Turn a list item into a paragraph where it stands, splitting the list around it. */

@@ -404,6 +404,8 @@ const taskMarkerField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(value, tr) {
     for (const effect of tr.effects) if (effect.is(setTaskMarkers)) return effect.value
+    // Past the size limit the preview is off and the markers are plain source again.
+    if (tr.docChanged && livePreviewDelay(tr.newDoc.length) === null) return Decoration.none
     return tr.docChanged ? value.map(tr.changes) : value
   },
 })

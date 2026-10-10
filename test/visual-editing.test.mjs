@@ -377,3 +377,16 @@ test('an image in a task is content: Backspace after it is left to the browser',
   assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(mixed, 3)), false)
   assert.ok(mixed.querySelector('input'))
 })
+
+test('ending an empty task in the middle of a list keeps the document order', () => {
+  for (const command of [backspaceVisualListItem, continueVisualList]) {
+    const surface = taskSurface('- [ ] a\n- [ ] \n\n  - child\n- [ ] b\n')
+    const empty = surface.querySelectorAll('li')[1]
+    assert.equal(command(surface, caretAt(empty, 1)), true, command.name)
+    const source = visualHtmlToSource(surface.innerHTML).source
+    assert.ok(source.indexOf('child') < source.indexOf('b\n'), `${command.name}: ${JSON.stringify(source)}`)
+    assert.ok(source.indexOf('- [ ] a') < source.indexOf('child'))
+    assert.equal(caret()[0].nodeName, 'P', 'the caret stays where the item was')
+    assert.equal(caret()[0].nextElementSibling?.querySelector('li')?.textContent, 'child')
+  }
+})
