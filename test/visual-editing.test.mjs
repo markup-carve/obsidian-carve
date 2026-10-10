@@ -355,3 +355,14 @@ test('an empty task with nested items keeps them when Backspace or Enter ends it
     assert.match(visualHtmlToSource(surface.innerHTML).source, /^- child\n$/m, command.name)
   }
 })
+
+test('the start of formatted task text counts as the task text start', () => {
+  const surface = taskSurface('- [ ] alpha\n- [ ] *bold* text\n')
+  const [alpha, bold] = surface.querySelectorAll('li')
+  const inside = bold.querySelector('strong').firstChild
+  assert.equal(normalizeVisualTaskCaret(surface, caretAt(inside, 0)), false, 'typing there stays bold')
+  assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(inside, 0)), true)
+  assert.deepEqual(caret(), [alpha.childNodes[1], ' alpha'.length])
+  assert.equal(backspaceVisualListItem(surface, caretAt(inside, 0)), true)
+  assert.equal(visualHtmlToSource(surface.innerHTML).source, '- [ ] alpha\n\n*bold* text\n')
+})

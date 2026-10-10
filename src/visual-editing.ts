@@ -300,7 +300,7 @@ function taskTextStart(box: HTMLInputElement): { node: Node; offset: number } {
 }
 
 /** The task item whose box a collapsed caret sits on or left of, with where its text starts. */
-function caretBeforeTaskText(surface: HTMLElement, selection: Selection | null): { item: HTMLLIElement; box: HTMLInputElement; start: { node: Node; offset: number } } | null {
+function caretBeforeTaskText(surface: HTMLElement, selection: Selection | null): { item: HTMLLIElement; box: HTMLInputElement; start: { node: Node; offset: number }; before: boolean } | null {
   const range = rangeIn(surface, selection)
   if (!range?.collapsed) return null
   const container = range.startContainer
@@ -311,7 +311,11 @@ function caretBeforeTaskText(surface: HTMLElement, selection: Selection | null):
   if (!box) return null
   const start = taskTextStart(box)
   const probe = document.createRange(); probe.setStart(start.node, start.offset); probe.collapse(true)
-  return probe.comparePoint(container, range.startOffset) <= 0 ? { item, box, start } : null
+  const order = probe.comparePoint(container, range.startOffset)
+  if (order < 0) return { item, box, start, before: true }
+  // Inside a leading `<strong>` and the like, offset 0 is still where the text starts.
+  probe.setEnd(container, range.startOffset)
+  return order === 0 || !probe.toString() ? { item, box, start, before: false } : null
 }
 
 function setCaret(node: Node, offset: number, selection: Selection | null): void {
@@ -325,9 +329,7 @@ function setCaret(node: Node, offset: number, selection: Selection | null): void
  */
 export function normalizeVisualTaskCaret(surface: HTMLElement, selection: Selection | null = document.getSelection()): boolean {
   const found = caretBeforeTaskText(surface, selection)
-  if (!found) return false
-  const range = selection!.getRangeAt(0)
-  if (range.startContainer === found.start.node && range.startOffset === found.start.offset) return false
+  if (!found?.before) return false
   setCaret(found.start.node, found.start.offset, selection)
   return true
 }
