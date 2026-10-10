@@ -18,6 +18,7 @@ import { appendOpaqueConstruct, editOpaqueWithPrompts, opaqueBlock, renderOpaque
 import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureCellPlaceholder, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, tableCellRectangle, tableCellsToTsv, toggleTableHeader, toggleTableHeaderAxis } from './visual-table'
 import { applyVisualInputRule, backspaceVisualListItem, clearVisualFormatting, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, insertVisualRule, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
 import { captureVisualSnapshot, restoreVisualSnapshot, type VisualSnapshot } from './visual-history'
+import { shouldHoldRender } from './preview-hold'
 
 export const CARVE_VIEW_TYPE = 'carve-view'
 export type CarveViewMode = 'preview' | 'source' | 'split' | 'visual'
@@ -70,6 +71,8 @@ export class CarveView extends TextFileView {
   private visualCleanup: (() => void) | null = null
   private watched = new Set<string>()
   private splitPreview: HTMLElement | null = null
+  /** Zero-based cursor line whose bare list marker holds back the split preview. */
+  private heldLine: number | null = null
   /** Where the reader last clicked in the reading view, for the include gesture. */
   private lastPreviewTarget: Element | null = null
 
@@ -86,6 +89,7 @@ export class CarveView extends TextFileView {
     // Index writes include this view's own debounced saves. Redrawing an active
     // editor here would destroy its selection and browser undo history.
     this.registerEvent(this.plugin.index.on('changed', () => { if (this.mode === 'preview') void this.draw() }))
+    this.registerEvent(this.app.workspace.on('active-leaf-change', (leaf) => { if (leaf !== this.leaf) this.releaseHeldRender() }))
   }
 
   async onClose(): Promise<void> { this.destroyEditor() }
@@ -97,7 +101,8 @@ export class CarveView extends TextFileView {
    */
   redraw(): void {
     if (this.mode === 'preview') void this.draw()
-    else if (this.mode === 'split' && this.splitPreview) void this.renderPreview(this.splitPreview)
+    // A held preview renders the latest source and dependencies when the hold releases.
+    else if (this.mode === 'split' && this.splitPreview && this.heldLine === null) void this.renderPreview(this.splitPreview)
   }
   getMode(): CarveViewMode { return this.mode }
   setViewData(data: string, clear: boolean): void { this.source = data; if (clear) this.contentEl.empty(); void this.draw() }
@@ -141,11 +146,18 @@ export class CarveView extends TextFileView {
           }),
           EditorView.contentAttributes.of({ 'aria-label': 'Carve source' }),
           EditorView.updateListener.of((update) => {
-            if (!update.docChanged) return
+            if (!update.docChanged) {
+              if (!livePreview || this.heldLine === null) return
+              if (update.focusChanged && !update.view.hasFocus) this.releaseHeldRender()
+              else if (update.selectionSet && this.cursorHoldLine(update.state) !== this.heldLine) this.releaseHeldRender()
+              return
+            }
             this.source = update.state.doc.toString()
             if (this.saveTimer !== null) window.clearTimeout(this.saveTimer)
             this.saveTimer = window.setTimeout(() => { this.requestSave(); this.saveTimer = null }, 250)
-            if (livePreview) void this.renderPreview(livePreview)
+            if (!livePreview) return
+            this.heldLine = this.cursorHoldLine(update.state)
+            if (this.heldLine === null) void this.renderPreview(livePreview)
           })],
       }),
     })
@@ -188,7 +200,20 @@ export class CarveView extends TextFileView {
     action('―', 'Insert horizontal rule', insertHorizontalRule)
   }
 
+  /** The cursor line when it holds a bare list marker, which would flicker the preview. */
+  private cursorHoldLine(state: EditorState): number | null {
+    const line = state.doc.lineAt(state.selection.main.head).number - 1
+    return shouldHoldRender(this.source, line) ? line : null
+  }
+
+  private releaseHeldRender(): void {
+    if (this.heldLine === null) return
+    this.heldLine = null
+    if (this.mode === 'split' && this.splitPreview) void this.renderPreview(this.splitPreview)
+  }
+
   private async draw(): Promise<void> {
+    this.heldLine = null
     this.destroyEditor()
     this.splitPreview = null
     this.contentEl.empty()
@@ -528,9 +553,12 @@ export class CarveView extends TextFileView {
   }
 
   private async renderPreview(preview: HTMLElement): Promise<void> {
+    this.heldLine = null
     const serial = ++this.renderSerial
-    const metadata = extractMetadata(this.source)
-    const expansion = await this.expand()
+    // Read once: a render still awaiting includes must not pick up a later, held keystroke.
+    const source = this.source
+    const metadata = extractMetadata(source)
+    const expansion = await this.expand(source)
     // The watch set belongs to the render that is about to be shown. A render
     // overtaken while it awaited must not leave its own dependencies behind.
     if (serial !== this.renderSerial) return
@@ -540,7 +568,7 @@ export class CarveView extends TextFileView {
     const layout = preview.createDiv({ cls: 'carve-reading-layout' })
     if (expansion) this.drawDiagnostics(layout, expansion.diagnostics, expansion.suppressed)
     const article = layout.createEl('article', { cls: 'carve-document' })
-    article.innerHTML = expansion ? expansion.html : renderCarve(this.source)
+    article.innerHTML = expansion ? expansion.html : renderCarve(source)
     // The expanded path stamped origins from the tree, where the engine says
     // each node came from. The plain path has no tree, so the open file claims
     // every link - which is also what drops an origin the document wrote.
@@ -561,10 +589,10 @@ export class CarveView extends TextFileView {
    * Expand includes for this document, or null when the feature is off, the
    * document carries no directive, or it has no path to resolve against.
    */
-  private async expand(): Promise<(Awaited<ReturnType<typeof renderCarveWithIncludes>>) | null> {
+  private async expand(source: string): Promise<(Awaited<ReturnType<typeof renderCarveWithIncludes>>) | null> {
     const path = this.file?.path
-    if (!this.plugin.settings.includes.enabled || !path || !this.source.includes('{{')) return null
-    return renderCarveWithIncludes(this.source, { sourcePath: path, gateway: this.plugin.gateway, cache: this.plugin.includeCache })
+    if (!this.plugin.settings.includes.enabled || !path || !source.includes('{{')) return null
+    return renderCarveWithIncludes(source, { sourcePath: path, gateway: this.plugin.gateway, cache: this.plugin.includeCache })
   }
 
   /**
