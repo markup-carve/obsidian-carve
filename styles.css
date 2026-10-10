@@ -89,12 +89,24 @@
   border-radius: 3px;
   padding: 0 0.15em;
 }
-.carve-editor .carve-live-list-marker,
-.carve-editor .carve-live-task-marker {
+.carve-editor .carve-live-list-marker {
   display: inline-block;
   width: 1.6em;
   color: var(--text-accent);
   user-select: none;
+}
+/* The box itself is drawn by Obsidian's input[type=checkbox] rule, so themes apply. */
+.carve-editor .carve-live-task-checkbox {
+  position: relative;
+  top: -0.1em;
+  vertical-align: middle;
+  margin-inline: 0 0.5em;
+  cursor: pointer;
+}
+.carve-editor .carve-live-task-done,
+.carve-editor .carve-live-task-cancelled {
+  color: var(--checklist-done-color, var(--text-muted));
+  text-decoration: var(--checklist-done-decoration, line-through);
 }
 .carve-editor .carve-live-link { color: var(--link-color); text-decoration: underline; }
 .carve-editor .carve-live-attribute {
@@ -228,3 +240,30 @@
 @media (forced-colors: active) {
   :is(.carve-preview, .carve-visual-editor, .carve-construct-preview).markdown-rendered blockquote { border-color: CanvasText; }
 }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li:has(> input[type="checkbox"]:first-child) { list-style-type: none; }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li > input[type="checkbox"]:first-child { margin-inline-start: calc(var(--checkbox-size, 1em) * -1.5); opacity: 1; }
+/* The visual editor drops the space after a task box (it collapses on an empty item), so the gap is a margin. */
+.carve-visual-editor li > input[type="checkbox"]:first-child { margin-inline-end: .3em; }
+/* Done and cancelled items fade and strike their own text only. A decoration
+   cannot be undone on a descendant, so a nested list is made an atomic inline box. */
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li:is(:has(> input[type="checkbox"]:checked:first-child), [data-task-state="-"]) {
+  color: var(--checklist-done-color, var(--text-muted));
+  text-decoration: var(--checklist-done-decoration, line-through);
+}
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li:is(:has(> input[type="checkbox"]:checked:first-child), [data-task-state="-"]) > :is(ul, ol) {
+  display: inline-block;
+  inline-size: 100%;
+  vertical-align: top;
+  color: var(--text-normal);
+}
+/* Extended states keep an open box; the outline tells them apart (as in carve-css). */
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li[data-task-state] > input[type="checkbox"]:first-child,
+.carve-editor .carve-live-task-checkbox[data-task-state] { outline-offset: 2px; }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li[data-task-state="-"] > input[type="checkbox"]:first-child,
+.carve-editor .carve-live-task-checkbox[data-task-state="-"] { opacity: .55; }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li[data-task-state="_"] > input[type="checkbox"]:first-child,
+.carve-editor .carve-live-task-checkbox[data-task-state="_"] { outline: 1px dashed var(--text-faint); }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li[data-task-state=">"] > input[type="checkbox"]:first-child,
+.carve-editor .carve-live-task-checkbox[data-task-state=">"] { outline: 1px solid var(--checkbox-color, var(--interactive-accent)); }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li[data-task-state="?"] > input[type="checkbox"]:first-child,
+.carve-editor .carve-live-task-checkbox[data-task-state="?"] { outline: 1px dotted var(--text-muted); }

@@ -16,7 +16,7 @@ import { highlightCodeBlocks, withCarveGrammar, type Prism } from './highlight'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
 import { appendOpaqueConstruct, editOpaqueWithPrompts, opaqueBlock, renderOpaqueConstruct, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource, type OpaqueConstruct } from './wysiwyg'
 import { addTableColumn, addTableRow, alignTableColumn, createTable, deleteTableColumn, deleteTableRow, ensureCellPlaceholder, ensureTablePlaceholders, focusCell, isSimpleTable, moveTableColumn, moveTableRow, parseTableSize, selectionCell, setTableCaption, sortTableColumn, tableCellRectangle, tableCellsToTsv, toggleTableHeader, toggleTableHeaderAxis } from './visual-table'
-import { applyVisualInputRule, backspaceVisualListItem, clearVisualFormatting, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, insertVisualRule, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
+import { applyVisualInputRule, backspaceVisualListItem, normalizeVisualTaskCaret, visualTaskCaretKey, clearVisualFormatting, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, insertVisualRule, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, unlinkVisualSelection, wrapVisualSelection } from './visual-editing'
 import { captureVisualSnapshot, restoreVisualSnapshot, type VisualSnapshot } from './visual-history'
 import { previewHoldUpdate } from './preview-hold'
 
@@ -430,7 +430,10 @@ export class CarveView extends TextFileView {
     surface.addEventListener('scroll', updateTableTools, { passive: true })
     const repositionTableTools = (): void => updateTableTools()
     window.addEventListener('resize', repositionTableTools)
-    this.visualCleanup = () => window.removeEventListener('resize', repositionTableTools)
+    // A caret placed on or left of a task box (click, arrow, Home) moves after it.
+    const taskCaret = (): void => { if (surface.isContentEditable) normalizeVisualTaskCaret(surface) }
+    document.addEventListener('selectionchange', taskCaret)
+    this.visualCleanup = () => { window.removeEventListener('resize', repositionTableTools); document.removeEventListener('selectionchange', taskCaret) }
     surface.addEventListener('focusout', (event) => {
       const next = event.relatedTarget
       if (next instanceof Node && (surface.contains(next) || toolbar.contains(next) || quickTableTools.contains(next))) return
@@ -477,6 +480,7 @@ export class CarveView extends TextFileView {
       }
       if (event.key === 'Escape' && (pendingFormats.size || selectedTableCells.length)) { pendingFormats.clear(); clearCellSelection(); updateTableTools(); status.setText('Pending formatting and table selection cleared.'); return }
       if (event.key === 'Enter' && editOpaque(event.target)) { event.preventDefault(); return }
+      if (!event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && visualTaskCaretKey(surface, event.key)) { event.preventDefault(); return }
       if (event.key === 'Enter' && continueVisualList(surface)) { event.preventDefault(); sync(); return }
       if (event.key === 'Backspace' && backspaceVisualListItem(surface)) { event.preventDefault(); sync(); return }
       const keyboardCell = selectionCell(surface)

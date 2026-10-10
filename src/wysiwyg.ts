@@ -166,12 +166,64 @@ function diagnosticMessages(report: unknown): string[] {
   })
 }
 
+function freshToken(base: string, ...texts: string[]): string {
+  let token = base
+  while (texts.some((text) => text.includes(token))) token += 'X'
+  return token
+}
+
+/**
+ * A bullet holding only a task box (`- [ ] `, what Enter leaves after a task) is a
+ * plain item with text `[ ]` to the engine, which needs task content. Give it a
+ * stand-in so it renders as a checkbox while the author is still filling it in.
+ */
+function renderWithPendingTasks(source: string): string {
+  // Skip the extra parse unless some line could be one.
+  if (!/^[ \t>]*[-*] [ \t]*\[[ xX_>?-]\][ \t]*$/m.test(source)) return renderCarve(source)
+  const nodes = createEditorSession(source).snapshot().nodes
+  const token = freshToken('CARVEPENDINGTASKX9F3A', source)
+  const childrenOf = new Map<string, typeof nodes[number][]>()
+  for (const node of nodes) {
+    const child = /^(.*)\/children\/\d+$/.exec(node.path)
+    if (!child) continue
+    const siblings = childrenOf.get(child[1]!)
+    if (siblings) siblings.push(node); else childrenOf.set(child[1]!, [node])
+  }
+  const at: number[] = []
+  for (const node of nodes) {
+    if (node.type !== 'list_item') continue
+    const children = childrenOf.get(node.path) ?? []
+    const content = children[0]
+    if (content?.type !== 'paragraph' || content.start <= node.start || children.some((child) => child !== content && child.type !== 'list')) continue
+    if (/^[-*] [ \t]*$/.test(source.slice(node.start, content.start)) && /^\[[ xX_>?-]\]$/.test(source.slice(content.start, content.end))) at.push(content.end)
+  }
+  if (!at.length) return renderCarve(source)
+  let marked = source
+  for (const offset of at.reverse()) marked = `${marked.slice(0, offset)} ${token}${marked.slice(offset)}`
+  return renderCarve(marked).split(`aria-label="${token}"`).join('aria-label="Toggle task"').split(` ${token}`).join(' <br data-carve-placeholder>').split(token).join('')
+}
+
+/** Like the engine's `htmlToCarve`, but an empty task item stays `- [ ] ` instead of `- [ ] +` or a hard break. */
+function visualHtmlToCarve(html: string): ReturnType<typeof htmlToCarve> {
+  const token = freshToken('CARVEEMPTYTASKX9F3A', html)
+  let found = false
+  // Attribute values can hold `>` (`data-task-state=">"`), so tags are matched quote-aware.
+  const attributes = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`
+  const emptyTask = new RegExp(String.raw`(<li\b${attributes}>\s*<input\b${attributes}\btype="checkbox"${attributes}>)(?:\s|&nbsp;|<br\b${attributes}>)*(?=<\/li>|<ul\b|<ol\b)`, 'gi')
+  const marked = html.replace(emptyTask, (_whole, open: string) => { found = true; return `${open} ${token}` })
+  const converted = htmlToCarve(marked, { mode: 'safe' })
+  return found ? { ...converted, value: converted.value.split(token).join('') } : converted
+}
+
 export function sourceToVisualDocument(source: string): VisualDocument {
   const { frontmatter, body } = splitFrontmatter(source)
   const protectedBody = protectAdvanced(body)
-  let html = renderCarve(protectedBody.source)
+  // The engine renders task boxes disabled; a disabled box never fires `change`.
+  // The gap after a task box is CSS here: a space before an empty item's `<br>` collapses,
+  // so the caret would touch the box and the text jump right once typed.
+  let html = renderWithPendingTasks(protectedBody.source).replace(/(<input type="checkbox"[^>]*?) disabled(?=[\s>])/g, '$1').replace(/(<li\b[^>]*>\s*<input type="checkbox"[^>]*>)[ \t]+/g, '$1')
   for (const [index, item] of protectedBody.opaque.entries()) html = html.split(item.token).join(`<carve-opaque class="carve-visual-opaque ${opaqueBlock(item) ? 'is-block' : 'is-inline'}" data-carve-opaque="${index}" contenteditable="false" role="button" tabindex="0" aria-label="Edit ${escapeHtml(item.kind.replace(/_/g, ' '))} construct" title="Double-click for live source editing; Enter for structured fields">${renderOpaqueConstruct(item)}</carve-opaque>`)
-  const converted = htmlToCarve(normalizeVisualHtml(html, protectedBody.opaque), { mode: 'safe' })
+  const converted = visualHtmlToCarve(normalizeVisualHtml(html, protectedBody.opaque))
   const beforeSemantics = semanticJson(body)
   const canonicalBody = restoreAdvanced(converted.value, protectedBody.opaque)
   const afterSemantics = semanticJson(canonicalBody)
@@ -189,7 +241,7 @@ export function sourceToVisualDocument(source: string): VisualDocument {
 
 export function visualHtmlToSource(html: string, frontmatter = '', opaque: readonly OpaqueConstruct[] = []): { source: string; diagnostics: string[] } {
   const cleanHtml = normalizeVisualHtml(html, opaque)
-  const converted = htmlToCarve(cleanHtml, { mode: 'safe' })
+  const converted = visualHtmlToCarve(cleanHtml)
   return { source: `${frontmatter}${restoreAdvanced(converted.value, opaque)}`, diagnostics: diagnosticMessages(converted.report) }
 }
 

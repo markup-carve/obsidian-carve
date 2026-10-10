@@ -101,6 +101,13 @@ Shift+Tab nest or unnest the active item, Enter creates the next item (including
 an unchecked task box), Enter in the middle splits at the caret, Backspace at
 the boundary joins or outdents, and Enter on an empty item exits or outdents the
 list. Task boxes are directly clickable and save their checked state.
+The caret never sits on or left of a task box: a click there, Home or an arrow
+puts it where the task text starts, and ArrowLeft from there goes to the line
+above. Backspace at the start of a task's text removes the box and the bullet
+together and leaves the text as a paragraph in place; on an empty task it ends
+the list like Enter. Source mode (live preview) behaves the same way: the hidden
+`- [ ] ` is skipped as one unit and shows as raw text only when a selection
+crosses it.
 Source and Live split apply the equivalent operations to authored indentation
 and continue bullet, numbered, and task markers. Tab moves an item to the
 content column of the item above it, so it nests as that item's child (three
