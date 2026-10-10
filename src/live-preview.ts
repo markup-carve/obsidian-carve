@@ -373,7 +373,7 @@ export function taskBackspaceEdit(source: string, head: number): TaskBackspaceEd
   const prefix = source.slice(lineStart, marker.from)
   if (!/^[ \t>]*$/.test(prefix)) return null
   const lineEnd = source.indexOf('\n', head) < 0 ? source.length : source.indexOf('\n', head)
-  if (!marker.content) return { changes: [{ from: lineStart, to: lineEnd, insert: '' }], head: lineStart }
+  if (!marker.content) return emptyTaskEdit(source, lineStart, lineEnd, marker.itemEnd)
   // A blank line inside a quote keeps the quote markers.
   const blank = prefix.includes('>') ? prefix.replace(/[ \t]+$/, '') : ''
   const changes: TaskBackspaceEdit['changes'] = []
@@ -399,6 +399,31 @@ export function taskBackspaceEdit(source: string, head: number): TaskBackspaceEd
   const items = (nodes: readonly EditorMappedNode[]): number => nodes.filter((node) => node.type === 'list_item').length
   const reparsed = createEditorSession(next).snapshot().nodes
   return reparsed.some((node) => node.type === 'paragraph' && node.start === result.head) && items(reparsed) === items(createEditorSession(source).snapshot().nodes) - 1 ? result : null
+}
+
+/**
+ * The empty task line loses its marker, like Enter on it. Its nested items move out
+ * to its column, so they do not become children of the item above.
+ */
+function emptyTaskEdit(source: string, lineStart: number, lineEnd: number, itemEnd: number): TaskBackspaceEdit | null {
+  const changes: TaskBackspaceEdit['changes'] = [{ from: lineStart, to: lineEnd, insert: '' }]
+  const indent = /^[ \t]*/.exec(source.slice(lineStart, lineEnd))![0].length
+  const restEnd = source[itemEnd - 1] === '\n' ? itemEnd - 1 : itemEnd
+  if (restEnd > lineEnd + 1) {
+    const lines = source.slice(lineEnd + 1, restEnd).split('\n')
+    const shift = Math.min(...lines.filter((line) => line.trim()).map((line) => /^ */.exec(line)![0].length)) - indent
+    if (!Number.isFinite(shift) || shift < 0) return null
+    let offset = lineEnd + 1
+    for (const line of lines) {
+      if (line.trim()) changes.push({ from: offset, to: offset + shift, insert: '' })
+      offset += line.length + 1
+    }
+  }
+  const result = { changes, head: lineStart }
+  let next = source
+  for (const change of [...changes].reverse()) next = next.slice(0, change.from) + change.insert + next.slice(change.to)
+  // No item may now span the emptied line, which would mean its children were adopted.
+  return createEditorSession(next).snapshot().nodes.every((node) => node.type !== 'list_item' || node.end <= lineStart || node.start >= lineStart) ? result : null
 }
 
 const setTaskMarkers = StateEffect.define<DecorationSet>()

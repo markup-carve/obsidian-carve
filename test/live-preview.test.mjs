@@ -405,6 +405,11 @@ test('Backspace on an empty task line removes the marker, like Enter on it', () 
   const edit = taskBackspaceEdit(source, 14)
   assert.deepEqual(edit, { changes: [{ from: 8, to: 14, insert: '' }], head: 8 })
   assert.equal(applyEdit(source, edit), '- [ ] a\n\n')
+  // Nested items move out to the task's column instead of joining the item above.
+  const nested = '- [ ] a\n- [ ] \n\n  - child\n- [ ] b\n'
+  const promoted = applyEdit(nested, taskBackspaceEdit(nested, 14))
+  assert.equal(promoted, '- [ ] a\n\n\n- child\n- [ ] b\n')
+  assert.doesNotMatch(carveToHtml(promoted), /a[^<]*<ul>/, 'child is not a child of a')
 })
 
 test('taskBackspaceEdit leaves other carets to the default Backspace', () => {
