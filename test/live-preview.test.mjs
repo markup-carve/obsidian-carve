@@ -112,7 +112,7 @@ test('a bullet with only a task box, as Enter leaves it, draws a checkbox, not b
   assert.deepEqual(livePresentations('- [ ] ', [{ from: 4, to: 4 }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }])
   assert.deepEqual(livePresentations('- [ ] ', [{ from: 5, to: 5 }]), [{ kind: 'line', at: 0, className: 'carve-live-list-item' }])
   // Not a box: escaped brackets, an unknown state, a box after other text, an ordered item.
-  for (const text of ['- \\[ \\] ', '- [y] ', '- a [ ] ', '1. [ ] ']) {
+  for (const text of ['- \\[ \\] ', '- [y] ', '- a [ ] ', '1. [ ] ', '- [ ]\n\n  paragraph']) {
     assert.equal(livePresentations(text, [{ from: text.length, to: text.length }]).some((item) => item.kind === 'task'), false, JSON.stringify(text))
   }
 })

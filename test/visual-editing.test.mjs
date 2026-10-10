@@ -250,6 +250,10 @@ test('a content-less task box in the source opens as a checkbox in the visual ed
     assert.doesNotMatch(seeded, /\[[x>]\]|CARVEPENDING/, pending)
     assert.equal(/checked/.test(seeded), checked, pending)
   }
+  // A later paragraph makes `[ ]` ordinary item text, as the engine reads it.
+  const loose = sourceToVisualDocument('- [ ]\n\n  paragraph\n')
+  assert.doesNotMatch(loose.html, /<input|CARVEPENDING/)
+  assert.doesNotMatch(visualHtmlToSource(loose.html).source, /CARVE/)
   // Escaped brackets are text, not a box.
   assert.doesNotMatch(sourceToVisualDocument('- \\[ \\]\n').html, /<input/)
 })

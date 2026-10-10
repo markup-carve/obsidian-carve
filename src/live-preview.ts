@@ -38,7 +38,8 @@ function taskBox(source: string, node: EditorMappedNode, children: readonly Edit
   const task = /^[-*] [ \t]*\[([ xX_>?-])\]( [ \t]*)$/.exec(marker)
   if (task) return { state: task[1]!, boxEnd: content.start - task[2]!.length, hideEnd: content.start, content }
   const pending = /^\[([ xX_>?-])\]$/.exec(source.slice(content.start, content.end))
-  if (!pending || !/^[-*] [ \t]*$/.test(marker) || content.end > node.end) return null
+  // Only a box and, at most, nested lists: a later paragraph makes it ordinary item text.
+  if (!pending || !/^[-*] [ \t]*$/.test(marker) || children!.some((child) => child !== content && child.type !== 'list')) return null
   const blank = /^[ \t]*/.exec(source.slice(content.end))![0]
   return { state: pending[1]!, boxEnd: content.end, hideEnd: content.end + blank.length, content: null }
 }

@@ -183,14 +183,15 @@ function renderWithPendingTasks(source: string): string {
   const at: number[] = []
   for (const node of nodes) {
     if (node.type !== 'list_item') continue
-    const content = nodes.find((candidate) => candidate.type === 'paragraph' && candidate.path === `${node.path}/children/0`)
-    if (!content || content.start <= node.start) continue
+    const children = nodes.filter((candidate) => candidate.path.startsWith(`${node.path}/children/`) && !candidate.path.slice(node.path.length + 10).includes('/'))
+    const content = children[0]
+    if (content?.type !== 'paragraph' || content.start <= node.start || children.some((child) => child !== content && child.type !== 'list')) continue
     if (/^[-*] [ \t]*$/.test(source.slice(node.start, content.start)) && /^\[[ xX_>?-]\]$/.test(source.slice(content.start, content.end))) at.push(content.end)
   }
   if (!at.length) return renderCarve(source)
   let marked = source
   for (const offset of at.reverse()) marked = `${marked.slice(0, offset)} ${token}${marked.slice(offset)}`
-  return renderCarve(marked).split(`aria-label="${token}"`).join('aria-label="Toggle task"').split(` ${token}`).join(' <br data-carve-placeholder>')
+  return renderCarve(marked).split(`aria-label="${token}"`).join('aria-label="Toggle task"').split(` ${token}`).join(' <br data-carve-placeholder>').split(token).join('')
 }
 
 /** Like the engine's `htmlToCarve`, but an empty task item stays `- [ ] ` instead of `- [ ] +` or a hard break. */
