@@ -30,11 +30,38 @@ test('list items and table rows keep their line styling under the cursor', () =>
 })
 
 test('a continued table cell hides the wrap and pipe markers on each source line', () => {
-  const source = '|= A |= B |\n| x | first |\n+ y | second |\n'
+  const source = '|= A |= B |\n| *x* | [l](u) |\n+ `y` | second |\n'
   const shown = livePresentations(source, [])
   assert.equal(shown.filter((item) => item.kind === 'line' && item.className === 'carve-live-table-row').length, 3)
   assert.ok(shown.some((item) => item.kind === 'hide' && source.slice(item.from, item.to).includes('+')))
   assert.ok(shown.some((item) => item.kind === 'mark' && source.slice(item.from, item.to) === 'second'))
+  assert.ok(shown.some((item) => item.kind === 'mark' && source.slice(item.from, item.to) === '`y`'))
+})
+
+test('fenced blocks keep their line breaks when Live Preview hides markers', async () => {
+  const window = new Window()
+  const saved = {}
+  for (const name of ['window', 'document', 'navigator', 'MutationObserver', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'Node', 'HTMLElement']) {
+    saved[name] = Object.getOwnPropertyDescriptor(globalThis, name)
+    Object.defineProperty(globalThis, name, { value: name === 'window' ? window : window[name], configurable: true, writable: true })
+  }
+  try {
+    const { EditorView } = await import('@codemirror/view')
+    const { EditorState } = await import('@codemirror/state')
+    const parent = window.document.createElement('div')
+    window.document.body.appendChild(parent)
+    const doc = 'start\n\n```js\ncode\n```\n\n::: note\nbody\n:::\n'
+    const view = new EditorView({ parent, state: EditorState.create({ doc, selection: { anchor: 0 }, extensions: [createCarveLivePreview()] }) })
+    await new Promise((resolve) => setTimeout(resolve, LIVE_PREVIEW_IDLE_MS + 40))
+    assert.match(parent.textContent, /code/)
+    assert.match(parent.textContent, /body/)
+    view.destroy()
+  } finally {
+    for (const name of Object.keys(saved)) {
+      if (saved[name]) Object.defineProperty(globalThis, name, saved[name])
+      else delete globalThis[name]
+    }
+  }
 })
 
 test('inline markers hide and semantic styling remains', () => {

@@ -183,7 +183,16 @@ function renderWithPendingTasks(source: string): string {
   const nodes = createEditorSession(source).snapshot().nodes
   const token = freshToken('CARVEPENDINGTASKX9F3A', source)
   const childrenOf = new Map<string, typeof nodes[number][]>()
+  const itemsOf = new Map<string, typeof nodes[number][]>()
   for (const node of nodes) {
+    if (node.type === 'list_item') {
+      const list = /^(.*)\/items\/\d+$/.exec(node.path)?.[1]
+      if (list) {
+        const siblings = itemsOf.get(list) ?? []
+        siblings.push(node)
+        itemsOf.set(list, siblings)
+      }
+    }
     const child = /^(.*)\/children\/\d+$/.exec(node.path)
     if (!child) continue
     const siblings = childrenOf.get(child[1]!)
@@ -195,7 +204,13 @@ function renderWithPendingTasks(source: string): string {
     const children = childrenOf.get(node.path) ?? []
     const content = children[0]
     if (content?.type !== 'paragraph' || content.start <= node.start || children.some((child) => child !== content && child.type !== 'list')) continue
-    if (/^[-*] [ \t]*$/.test(source.slice(node.start, content.start)) && /^\[[ xX_>?-]\]$/.test(source.slice(content.start, content.end))) at.push(content.end)
+    if (/^[-*] [ \t]*$/.test(source.slice(node.start, content.start)) && /^\[[ xX_>?-]\]$/.test(source.slice(content.start, content.end))) {
+      const list = /^(.*)\/items\/\d+$/.exec(node.path)?.[1]
+      const siblings = list ? itemsOf.get(list) ?? [] : []
+      // Promoting one pending item in a mixed list splits its HTML into two
+      // lists. The round trip then inserts a blank line and locks visual mode.
+      if (siblings.every((item) => /^[-*] [ \t]*\[[ xX_>?-]\]/.test(source.slice(item.start, item.end)))) at.push(content.end)
+    }
   }
   if (!at.length) return renderCarve(source)
   let marked = source

@@ -62,6 +62,13 @@ test('visual table caret placeholders never enter Carve source', () => {
   assert.deepEqual(edited.diagnostics, [])
 })
 
+test('an empty task beside a plain list item does not lock visual editing', () => {
+  const source = '- a\n- [ ] \n'
+  const visual = sourceToVisualDocument(source)
+  assert.equal(visual.semanticLoss, false)
+  assert.equal(visualHtmlToSource(visual.html).source.trimEnd(), source.trimEnd())
+})
+
 test('visual table selection state never enters Carve source', () => {
   const edited = visualHtmlToSource('<table><tr><td class="human is-carve-selected">A</td><td class="is-carve-selected">B</td></tr></table>')
   assert.doesNotMatch(edited.source, /is-carve-selected/)

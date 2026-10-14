@@ -166,13 +166,15 @@ export function livePresentations(
       if (!cells.length) {
         // A cell spanning continuation lines has no source range in the AST, so
         // the editor map omits its table_cell node. Its text still has ranges.
-        const texts = nodes.filter((candidate) => candidate.type === 'text' && candidate.path.startsWith(`${node.path}/cells/`))
-        if (!texts.length) continue
+        const content = nodes.filter((candidate) => candidate.path.startsWith(`${node.path}/cells/`)
+          && candidate.type !== 'cell_wrap' && candidate.start < candidate.end
+          && !byParent.has(candidate.path))
+        if (!content.length) continue
         const header = /^\|=/.test(authored)
         for (let lineStart = node.start; lineStart < node.end;) {
           const breakAt = source.indexOf('\n', lineStart)
           const lineEnd = breakAt < 0 || breakAt >= node.end ? node.end : breakAt
-          const spans = texts.filter((candidate) => candidate.start >= lineStart && candidate.end <= lineEnd).sort((a, b) => a.start - b.start)
+          const spans = content.filter((candidate) => candidate.start >= lineStart && candidate.end <= lineEnd).sort((a, b) => a.start - b.start)
           if (spans.length) {
             presentations.push({ kind: 'line', at: lineStart, className: 'carve-live-table-row' })
             let cursor = lineStart
@@ -527,7 +529,18 @@ export type ImageResolver = (destination: string) => string | null
 function decorations(session: EditorSession, selections: readonly SelectionRange[], resolveImage?: ImageResolver): DecorationSet {
   const snapshot = session.snapshot()
   const ranges = livePresentations(snapshot.source, selections, snapshot.nodes).flatMap((item) => {
-    if (item.kind === 'hide') return [Decoration.replace({}).range(item.from, item.to)]
+    if (item.kind === 'hide') {
+      // ViewPlugin decorations cannot replace a line break. Keep each break in
+      // place and hide only the marker text on either side of it.
+      const hidden = []
+      for (let from = item.from; from < item.to;) {
+        const breakAt = snapshot.source.indexOf('\n', from)
+        const to = breakAt < 0 || breakAt >= item.to ? item.to : breakAt
+        if (from < to) hidden.push(Decoration.replace({}).range(from, to))
+        from = to + 1
+      }
+      return hidden
+    }
     if (item.kind === 'mark') return [Decoration.mark({ class: item.className }).range(item.from, item.to)]
     if (item.kind === 'widget') return [Decoration.widget({ widget: new MarkerWidget(item.label, item.className), side: -1 }).range(item.at)]
     if (item.kind === 'task') return [Decoration.widget({ widget: new TaskWidget(item.state), side: -1 }).range(item.at)]
