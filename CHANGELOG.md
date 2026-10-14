@@ -7,7 +7,7 @@
 - Tab and Shift+Tab nest list items at the parent's content column (#63).
 - Split preview holds its last render while the cursor sits on an unfinished list marker (#65).
 - Visual task checkboxes are clickable, Backspace removes task markers cleanly, and headings keep their size under the cursor (#67). Obsidian 1.14 uses one CodeMirror state, restoring arrow and Home/End behavior (#68).
-- Live Preview styles continued table cells and keeps block marker line breaks intact. The browser engine moves to carve 0.1.11, preserving empty table rows, recognizing compact include selectors, and reporting include id renames under the current warning code.
+- Live Preview styles continued table cells and keeps block marker line breaks intact. The browser engine moves to carve 0.1.11, preserving empty table rows, recognizing compact include selectors, and reporting include id renames under the current warning code. The editor grammar package moves to 0.1.14.
 
 ## 0.1.2
 
