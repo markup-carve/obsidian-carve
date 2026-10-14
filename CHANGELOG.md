@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.3
 
 - Enter and Tab in the source editor follow carve-lsp's on-type rules. Enter
   at the start of `- a` no longer writes `- - a`; Enter continues lists in
@@ -32,13 +32,13 @@
 - A link destination with a malformed percent sequence such as `50%off` no
   longer throws on click or aborts the reading view while resolving an
   embed (#69).
-
-## 0.1.3
-
 - Tab and Shift+Tab nest list items at the parent's content column (#63).
 - Split preview holds its last render while the cursor sits on an unfinished list marker (#65).
 - Visual task checkboxes are clickable, Backspace removes task markers cleanly, and headings keep their size under the cursor (#67). Obsidian 1.14 uses one CodeMirror state, restoring arrow and Home/End behavior (#68).
-- Live Preview styles continued table cells and keeps block marker line breaks intact. The browser engine moves to carve 0.1.11, preserving empty table rows, recognizing compact include selectors, and reporting include id renames under the current warning code. The editor grammar package moves to 0.1.14.
+- Live Preview styles continued table cells and keeps block marker line breaks intact. The browser engine moves to carve 0.1.11, preserving empty table rows, recognizing compact include selectors, and reporting include id renames under the current warning code (#70).
+- Source highlighting moves to carve-grammars 0.1.15: escaped punctuation
+  stays literal, and an unclosed code fence ends at its container's closer
+  (#72, #74).
 
 ## 0.1.2
 
