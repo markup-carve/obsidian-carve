@@ -72,3 +72,23 @@ test('the visual editor draws the gap after a task box as a margin, the preview 
   assert.equal(render('carve-visual-editor markdown-rendered', '- [ ] open').box('open').marginInlineEnd, '.3em')
   assert.notEqual(render('carve-preview markdown-rendered', '- [ ] open').box('open').marginInlineEnd, '.3em')
 })
+
+test('source highlighting maps grammar tokens onto theme variables', async () => {
+  const { default: Prism } = await import('prismjs')
+  const { withCarveGrammar } = await import('../dist-test/highlight.js')
+  const { carveTokenRanges } = await import('../dist-test/syntax.js')
+  const source = '# Head\n\nA *bold* [[Note]] %% hidden %%\n'
+  const ranges = carveTokenRanges(source, await withCarveGrammar(Prism))
+  const window = new Window()
+  const style = window.document.createElement('style')
+  style.textContent = `body { --text-accent: rgb(1, 2, 3); --link-color: rgb(4, 5, 6); --code-comment: rgb(7, 8, 9); }\n${css}`
+  window.document.head.append(style)
+  const line = window.document.createElement('div'); line.className = 'carve-source-editor'
+  for (const range of ranges) { const span = window.document.createElement('span'); span.className = range.className; span.textContent = source.slice(range.from, range.to); line.append(span) }
+  window.document.body.append(line)
+  const styleOf = (text) => window.getComputedStyle(Array.from(line.children).find((span) => span.textContent.includes(text)))
+  assert.equal(styleOf('Head').color, 'rgb(1, 2, 3)')
+  assert.equal(styleOf('[[Note]]').color, 'rgb(4, 5, 6)')
+  assert.equal(styleOf('%% hidden %%').color, 'rgb(7, 8, 9)')
+  assert.match(styleOf('bold').fontWeight, /^(700|bold)$/)
+})

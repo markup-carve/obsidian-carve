@@ -10,7 +10,7 @@ import { IncludeCache, renderCarveWithIncludes, type IncludeDiagnostic, type Vau
 import { carveClipboardPaste, carveClipboardPayload, writeCarveClipboard } from './clipboard'
 import { flattenDocument, flattenSummary, flattenedPath, type FlattenResult } from './flatten'
 import { bundleEntryPath, bundleManifest, bundlePath, bundleSummary, foldersFor, planBundle } from './bundle'
-import { carveHighlighting, carveLanguage } from './syntax'
+import { carveHighlighting, type TokenizingPrism } from './syntax'
 import { createCarveLivePreview } from './live-preview'
 import { highlightCodeBlocks, withCarveGrammar, type Prism } from './highlight'
 import { carveEditorCommands, createLink, editTable, insertHorizontalRule, insertSimpleTable, setHeading, setLinePrefix, toggleCode, toggleEmphasis, toggleHighlight, toggleStrike, toggleStrong, wrapCallout, wrapCodeBlock } from './editor-commands'
@@ -125,7 +125,7 @@ export class CarveView extends TextFileView {
       parent: host,
       state: EditorState.create({
         doc: this.source,
-        extensions: [basicSetup, carveLanguage, carveHighlighting, ...(livePreview ? [] : [createCarveLivePreview((destination) => {
+        extensions: [basicSetup, carveHighlighting(() => this.plugin.prism() as Promise<TokenizingPrism | null>), ...(livePreview ? [] : [createCarveLivePreview((destination) => {
           if (/^https?:\/\//i.test(destination)) return destination
           const target = this.plugin.app.metadataCache.getFirstLinkpathDest(destination, this.file?.path ?? '')
           return target ? this.plugin.app.vault.getResourcePath(target) : null
