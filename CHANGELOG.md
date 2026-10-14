@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Enter and Tab in the source editor follow carve-lsp's on-type rules. Enter
+  at the start of `- a` no longer writes `- - a`; Enter continues lists in
+  quotes, after attributed markers, in footnotes and in description lists,
+  continues plain quote lines, and writes code and colon fence closers. Tab
+  nests a list item inside a quote. Enter on an empty item now leaves the
+  caret on a new line below the cleared marker, as carve-lsp does, and a lone
+  `- ` with no list to end is left alone (#73).
+- Live Preview stays responsive on long notes: above 40,000 characters it
+  parses a window around the viewport instead of the whole note, and a caret
+  move redraws only the visible lines. Enter on a line nothing can continue
+  no longer parses the note (#73).
 - Highlight the source editor with carve-grammars' Prism grammar, the one the
   reading view already uses for `carve` fences, instead of a hand-written
   tokenizer. A thematic break mid-note no longer paints the rest of the note

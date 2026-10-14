@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Window } from 'happy-dom'
 import { carveToHtml } from '@markup-carve/carve'
-import { LIVE_PREVIEW_IDLE_MS, LIVE_PREVIEW_MAX_SOURCE_LENGTH, createCarveLivePreview, livePresentations, livePreviewDelay, liveTaskMarkers, taskBackspaceEdit, taskCaretTarget, taskToggle } from '../dist-test/live-preview.js'
+import { LIVE_PREVIEW_IDLE_MS, LIVE_PREVIEW_MAX_SOURCE_LENGTH, LIVE_PREVIEW_WINDOW_MARGIN, LIVE_PREVIEW_WINDOW_THRESHOLD, createCarveLivePreview, livePresentations, livePreviewWindow, nodesInRanges, livePreviewDelay, liveTaskMarkers, taskBackspaceEdit, taskCaretTarget, taskToggle } from '../dist-test/live-preview.js'
 
 test('typed ### heading becomes an H3 presentation outside the cursor', () => {
   assert.deepEqual(livePresentations('### Human heading', [{ from: 17, to: 17 }]), [
@@ -555,4 +555,62 @@ test('past the size limit the task markers stop steering the caret', async () =>
     view.dispatch({ selection: { anchor: alpha - 6 } })
     assert.equal(view.state.selection.main.head, alpha - 6)
   })
+})
+
+test('a short note is parsed whole; a long one only around the viewport', () => {
+  assert.deepEqual(livePreviewWindow('# Short\n', 0, 8), { from: 0, to: 8 })
+  const block = '- item\n  continued\n\nA paragraph at column zero.\n\n'
+  const source = block.repeat(Math.ceil(200_000 / block.length))
+  const view = 100_000
+  const { from, to } = livePreviewWindow(source, view, view + 3000)
+  assert.ok(from <= view - LIVE_PREVIEW_WINDOW_MARGIN && from > view - 2 * LIVE_PREVIEW_WINDOW_MARGIN, `starts at ${from}`)
+  assert.equal(source.slice(from - 2, from), '\n\n')
+  assert.match(source.slice(from), /^\S/, 'the window starts at a column-0 block')
+  assert.ok(to >= view + 3000 + LIVE_PREVIEW_WINDOW_MARGIN && to - from < 4 * LIVE_PREVIEW_WINDOW_MARGIN, `ends at ${to}`)
+  assert.ok(source.length > LIVE_PREVIEW_WINDOW_THRESHOLD)
+})
+
+test('the parse window never starts inside a code fence', () => {
+  const fenced = '```\n' + 'code\n\nx\n'.repeat(5000) + '```\n\n'
+  const source = 'intro\n\n'.repeat(5000) + fenced + 'tail\n\n'.repeat(5000)
+  const opener = source.indexOf('```')
+  const { from } = livePreviewWindow(source, opener + 20_000, opener + 22_000)
+  assert.ok(from <= opener, `starts at ${from}, inside the fence that opens at ${opener}`)
+})
+
+test('only the visible nodes are presented', () => {
+  const nodes = [
+    { path: '/children/0', type: 'heading', start: 0, end: 10, tokens: [] },
+    { path: '/children/1', type: 'paragraph', start: 12, end: 40, tokens: [] },
+    { path: '/children/2', type: 'heading', start: 42, end: 50, tokens: [] },
+  ]
+  assert.deepEqual(nodesInRanges(nodes, [{ from: 15, to: 20 }]).map((node) => node.path), ['/children/1'])
+  assert.deepEqual(nodesInRanges(nodes, [{ from: 0, to: 12 }, { from: 45, to: 45 }]).map((node) => node.path), ['/children/0', '/children/1', '/children/2'])
+})
+
+test('a long note still gets Live Preview decorations from its windowed parse', async () => {
+  const window = new Window()
+  const saved = {}
+  for (const name of ['window', 'document', 'navigator', 'MutationObserver', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'Node', 'HTMLElement']) {
+    saved[name] = Object.getOwnPropertyDescriptor(globalThis, name)
+    Object.defineProperty(globalThis, name, { value: name === 'window' ? window : window[name], configurable: true, writable: true })
+  }
+  try {
+    const { EditorView } = await import('@codemirror/view')
+    const { EditorState } = await import('@codemirror/state')
+    const parent = window.document.createElement('div')
+    window.document.body.appendChild(parent)
+    const doc = '# Top heading\n\n' + 'A plain paragraph line.\n\n'.repeat(4000)
+    assert.ok(doc.length > LIVE_PREVIEW_WINDOW_THRESHOLD)
+    const view = new EditorView({ parent, state: EditorState.create({ doc, selection: { anchor: doc.length }, extensions: [createCarveLivePreview()] }) })
+    for (let i = 0; i < 100 && !parent.querySelector('.carve-live-heading'); i++) await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.ok(parent.querySelector('.carve-live-heading-1'), 'the heading in view was not decorated')
+    view.destroy()
+  } finally {
+    for (const [name, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor)
+      else delete globalThis[name]
+    }
+    await window.happyDOM.close()
+  }
 })
