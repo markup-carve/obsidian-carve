@@ -295,7 +295,7 @@ test('Backspace at a task text removes box and bullet; the text becomes a paragr
     const source = visualHtmlToSource(surface.innerHTML).source
     assert.equal(source, '- [ ] alpha\n\nbeta\n\n- [ ] gamma\n', label)
     // The engine reads it as a paragraph between two lists, not as part of `alpha`.
-    assert.match(carveToHtml(source), /<\/ul>\n<p>beta<\/p>\n<ul>/, label)
+    assert.match(carveToHtml(source), /<\/ul>\n<p>beta<\/p>\n<ul class="task-list">/, label)
     const [node, offset] = caret()
     assert.equal(node.nodeName === 'P' ? node.textContent : node.parentElement.textContent, 'beta', label)
     assert.equal(offset, 0, `${label}: the caret stays at the text start`)

@@ -55,13 +55,11 @@ test('visual editing preserves frontmatter bytes outside the editable surface', 
 })
 
 test('visual table caret placeholders never enter Carve source', () => {
-  // carve-js 0.1.7 drops a row whose every cell is empty and says so in the
-  // report, so the placeholder row leaves the source rather than becoming an
-  // empty body row.
+  // The placeholder element is editor chrome; the empty table row is content.
   const edited = visualHtmlToSource('<table><tr><th>A</th></tr><tr><td><br data-carve-placeholder=""></td></tr></table>')
   assert.doesNotMatch(edited.source, /\\\n|placeholder/)
-  assert.equal(edited.source, '|= A |\n')
-  assert.deepEqual(edited.diagnostics, ['Dropped a row whose every cell is empty: Carve reads such a row as text'])
+  assert.equal(edited.source, '|= A |\n| |\n')
+  assert.deepEqual(edited.diagnostics, [])
 })
 
 test('visual table selection state never enters Carve source', () => {

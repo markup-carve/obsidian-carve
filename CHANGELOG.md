@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.3
+
+- Flatten counts renamed include ids again.
+- Live Preview recognizes compact include selectors, styles continued table cells, and holds its last render for unfinished list markers.
+- Visual editing gains list and table controls. Unsupported constructs stay in source widgets. List continuation commands are available, empty table rows remain editable, and the browser engine is now carve 0.1.11.
+
+
 ## 0.1.2
 
 - Read a quote at document text contrast in the previews. A quote body used

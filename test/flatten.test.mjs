@@ -52,7 +52,7 @@ test('a colliding heading id is renamed into the output and counted', async () =
   assert.match(result.text, /^\{#intro-2\}$/m, 'the rename is written into the source, not only reported')
   assert.equal(result.renamed, 1)
   assert.equal(result.diagnostics.length, 1)
-  assert.equal(result.diagnostics[0].rule, 'include-heading-id-rename')
+  assert.equal(result.diagnostics[0].rule, 'include-id-rename')
 })
 
 test("the author's wiki syntax survives flattening verbatim", async () => {
@@ -150,7 +150,7 @@ test('the summary states the normalization, and every count it has', () => {
   assert.equal(flattenSummary(base, 'Copied.'), 'Copied. Canonical Carve, so formatting is normalized.')
   const loud = {
     ...base,
-    diagnostics: [{ rule: 'include-heading-id-rename' }, { rule: 'include-footnote-rename' }, { rule: 'include-unresolved' }],
+    diagnostics: [{ rule: 'include-id-rename' }, { rule: 'include-footnote-rename' }, { rule: 'include-unresolved' }],
     renamed: 2,
     rebased: 3,
     ambiguous: ['Elsewhere'],

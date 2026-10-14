@@ -15,7 +15,7 @@ import { directoryOf, expandForPreview, type IncludeDiagnostic, type PreviewExpa
 import { withCrvExtension } from './metadata.js'
 
 /** Warnings reporting a collision the expansion broke by renaming (spec I5). */
-const RENAME_RULES = ['include-heading-id-rename', 'include-footnote-rename']
+const RENAME_RULES = ['include-id-rename', 'include-footnote-rename']
 
 /** Names tried before giving up on finding a free one for the exported copy. */
 export const MAX_EXPORT_CANDIDATES = 100

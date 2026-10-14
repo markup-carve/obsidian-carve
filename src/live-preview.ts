@@ -163,7 +163,30 @@ export function livePresentations(
     }
     if (node.type === 'table_row') {
       const cells = byParent.get(`${node.path}/cells`)?.filter((candidate) => candidate.type === 'table_cell') ?? []
-      if (!cells.length) continue
+      if (!cells.length) {
+        // A cell spanning continuation lines has no source range in the AST, so
+        // the editor map omits its table_cell node. Its text still has ranges.
+        const texts = nodes.filter((candidate) => candidate.type === 'text' && candidate.path.startsWith(`${node.path}/cells/`))
+        if (!texts.length) continue
+        const header = /^\|=/.test(authored)
+        for (let lineStart = node.start; lineStart < node.end;) {
+          const breakAt = source.indexOf('\n', lineStart)
+          const lineEnd = breakAt < 0 || breakAt >= node.end ? node.end : breakAt
+          const spans = texts.filter((candidate) => candidate.start >= lineStart && candidate.end <= lineEnd).sort((a, b) => a.start - b.start)
+          if (spans.length) {
+            presentations.push({ kind: 'line', at: lineStart, className: 'carve-live-table-row' })
+            let cursor = lineStart
+            for (const span of spans) {
+              if (cursor < span.start) presentations.push({ kind: 'hide', from: cursor, to: span.start })
+              presentations.push({ kind: 'mark', from: span.start, to: span.end, className: header ? 'carve-live-table-header' : 'carve-live-table-cell' })
+              cursor = span.end
+            }
+            if (cursor < lineEnd) presentations.push({ kind: 'hide', from: cursor, to: lineEnd })
+          }
+          lineStart = lineEnd + 1
+        }
+        continue
+      }
       presentations.push({ kind: 'line', at: node.start, className: 'carve-live-table-row' })
       let cursor = node.start
       for (const cell of cells) {
