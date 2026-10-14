@@ -158,8 +158,61 @@ test('source Enter continues bullets, numbering, and task state', () => {
   assert.equal(apply('a. x', listContinuationEdit('a. x', 0, 4, 4).changes), 'a. x\nb. ')
   assert.equal(apply('iv) x', listContinuationEdit('iv) x', 0, 5, 5).changes), 'iv) x\nv)  ')
   assert.equal(apply('. x', listContinuationEdit('. x', 0, 3, 3).changes), '. x\n. ')
-  assert.equal(apply('- ', listContinuationEdit('- ', 0, 2, 2).changes), '')
-  assert.equal(apply('- a\n- [ ] ', listContinuationEdit('- a\n- [ ] ', 4, 10, 10).changes), '- a\n')
+  // carve-lsp ends a list from an empty item and leaves the caret on the next line.
+  assert.equal(apply('- a\n- [ ] ', listContinuationEdit('- a\n- [ ] ', 4, 10, 10).changes), '- a\n\n')
+  // A lone marker with no list to end is text to carve-lsp, so the default Enter runs.
+  assert.equal(listContinuationEdit('- ', 0, 2, 2), null)
+})
+
+/** Enter at `head` in `source`, applied, with the caret shown as `|`; null when the default Enter runs. */
+function enter(source, head) {
+  const lineFrom = source.lastIndexOf('\n', head - 1) + 1
+  const end = source.indexOf('\n', head)
+  const edit = listContinuationEdit(source, lineFrom, end === -1 ? source.length : end, head)
+  if (!edit) return null
+  const next = apply(source, edit.changes)
+  return `${next.slice(0, edit.head)}|${next.slice(edit.head)}`
+}
+
+test('source Enter before or inside a marker is a plain Enter', () => {
+  // Enter at column 0 of `- a` used to write `\n- - a`.
+  for (const head of [0, 1, 2]) assert.equal(enter('- a', head), null, `caret at ${head}`)
+  assert.equal(enter('> - a', 2), null)
+  assert.equal(enter('> text', 1), null)
+})
+
+test('source Enter mid-text moves the rest of the line behind the new marker', () => {
+  assert.equal(enter('- abc', 4), '- ab\n- |c')
+  assert.equal(enter('> abcd', 4), '> ab\n> |cd')
+  assert.equal(enter('| a | b |', 4), null)
+})
+
+test('source Enter follows carve-lsp in quotes, attributed items, footnotes and description lists', () => {
+  assert.equal(enter('> - a', 5), '> - a\n> - |')
+  assert.equal(enter('-{.c} a', 7), '-{.c} a\n- |')
+  assert.equal(enter('[^1]: - a', 9), '[^1]: - a\n  - |')
+  assert.equal(enter(':: term', 7), ':: term\n: |')
+  assert.equal(enter(':: term\n: def', 13), ':: term\n: def\n: |')
+  assert.equal(enter('> text', 6), '> text\n> |')
+  assert.equal(enter('> a\n> ', 6), '> a\n\n|')
+  assert.equal(enter('| a | b |', 9), '| a | b |\n| |')
+})
+
+test('source Enter after a fence opener writes its closer below the caret', () => {
+  assert.equal(enter('```js', 5), '```js\n|\n```')
+  assert.equal(enter('::: note', 8), '::: note\n|\n:::')
+  assert.equal(enter('```js\nx\n```', 5), null)
+})
+
+test('source Tab nests a quoted list item, and Shift-Tab moves it back out', () => {
+  const tab = (source, line, outdent = false) => {
+    const lineFrom = source.split('\n').slice(0, line).reduce((sum, text) => sum + text.length + 1, 0)
+    const edit = listIndentEdit(source, lineFrom, lineFrom, outdent)
+    return edit ? apply(source, edit.changes) : null
+  }
+  assert.equal(tab('> - a\n> - b', 1), '> - a\n>   - b')
+  assert.equal(tab('> - a\n>   - b', 1, true), '> - a\n> - b')
+  assert.equal(tab('- a\n- b', 0), null)
 })
 
 test('source Enter leaves non-markers to the default', () => {
@@ -174,4 +227,15 @@ test('source task shortcut creates and toggles tasks without rewriting content',
   assert.equal(apply('- [x] item', taskToggleEdit('- [x] item', 0, 10).changes), '- [ ] item')
   assert.equal(apply('- [?] item', taskToggleEdit('- [?] item', 0, 10).changes), '- [x] item')
   assert.equal(apply('+ item', taskToggleEdit('+ item', 0, 6).changes), '- [ ] + item')
+})
+
+test('source Enter on a line nothing continues skips the document parse', () => {
+  const big = 'A paragraph of plain prose that goes on for a while.\n\n'.repeat(4000)
+  const source = `${big}plain line\n\n- item`
+  const plainEnd = source.indexOf('plain line') + 'plain line'.length
+  const started = performance.now()
+  assert.equal(listContinuationEdit(source, plainEnd - 'plain line'.length, plainEnd, plainEnd), null)
+  const elapsed = performance.now() - started
+  assert.ok(elapsed < 100, `a plain line took ${elapsed.toFixed(0)} ms`)
+  assert.ok(enter(source, source.length).endsWith('- item\n- |'), 'a list line in the same note still continues')
 })

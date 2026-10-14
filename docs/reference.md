@@ -112,7 +112,15 @@ the list like Enter. Source mode (live preview) behaves the same way: the hidden
 `- [ ] ` is skipped as one unit and shows as raw text only when a selection
 crosses it.
 Source and Live split apply the equivalent operations to authored indentation
-and continue bullet, numbered, and task markers. Tab moves an item to the
+and continue bullet, numbered, and task markers, following carve-lsp's on-type
+rules. Enter also continues a list inside a quote (`> - `), after an attributed
+marker (`-{.c} a`), in a footnote body and in a description list (`:: term` and
+`: def` continue with `: `), repeats the `> ` of a quote line and the `| ` of a
+table row, and writes the closer of a code or colon fence opened on the line
+below the caret. Enter on an empty item or an empty quote line clears it, and
+Enter in the middle of an item's text moves the rest behind the new marker.
+Enter with the caret inside a marker or quote prefix is a plain line break.
+Tab moves an item to the
 content column of the item above it, so it nests as that item's child (three
 columns under `1.`, four under `10.`); Shift+Tab moves it back to its parent's
 marker column. The item's continuation lines and child items move with it, and a

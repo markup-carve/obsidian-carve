@@ -1,6 +1,7 @@
 import { EditorSelection, Prec, type Extension } from '@codemirror/state'
 import { keymap, type Command, type EditorView } from '@codemirror/view'
 import { parse, type Document, type Position } from '@markup-carve/carve'
+import { BARE_CONTINUATION_MARKER, continuationPrefix, listContinuationEdits, listIndentEdits, type ContinuationEdit } from '@markup-carve/carve-lsp/browser'
 
 export interface FormatEdit {
   changes: Array<{ from: number; to: number; insert: string }>
@@ -189,7 +190,6 @@ export const BULLET_MARKER = '[-*]'
 export const ORDERED_MARKER = String.raw`(?:\.|(?:[0-9]+|[A-Za-z]|[ivxlcdm]{2,}|[IVXLCDM]{2,})[.)])`
 export const TASK_BOX_MARKER = String.raw`\[[ xX_>?-]\]`
 const BARE_MARKER = new RegExp(String.raw`^[ \t]*(?:${BULLET_MARKER} [ \t]*(?:${TASK_BOX_MARKER} [ \t]*)?|${ORDERED_MARKER} [ \t]*)$`)
-const TASK_BOX = /^\[[ xX_>?-]\]( [ \t]*|$)/
 // A content-less marker parses as lazy text, so it is measured with a placeholder.
 const PLACEHOLDER = 'x'
 
@@ -316,13 +316,6 @@ function shiftLine(line: string, delta: number): string {
   return ' '.repeat(Math.max(0, columns(leading) + delta)) + line.slice(leading.length)
 }
 
-/** Lines with the target line's bare marker given a placeholder body, or the lines as they are. */
-function withPlaceholder(lines: string[], line: number): { lines: string[]; placeholder: boolean } {
-  if (!BARE_MARKER.test(lines[line] ?? '')) return { lines, placeholder: false }
-  const copy = lines.slice(); copy[line] = copy[line] + PLACEHOLDER
-  return { lines: copy, placeholder: true }
-}
-
 interface ItemMove { item: SourceItem; column: number; marker: string; parentLine: number | null }
 
 /** Where one Tab or Shift+Tab sends the item that starts at `item.line`, or null. */
@@ -415,6 +408,13 @@ export function listIndentEdit(source: string, lineFrom: number, lineTo: number,
   const { lines, eols } = splitLines(source)
   const lineAt = (offset: number): number => source.slice(0, offset).split('\n').length - 1
   const first = lineAt(lineFrom); const last = lineAt(Math.max(lineFrom, lineTo))
+  // One line goes through carve-lsp's rule, which also reaches items inside a
+  // quote; a selection of several items keeps the local planner, which moves
+  // them together.
+  if (first === last) {
+    const edits = listIndentEdits(source, first, outdent ? 'outdent' : 'indent')
+    if (edits?.length) return lspEdit(source, edits, lineFrom)
+  }
   const current = indentItems(lines, first, last, outdent)
   if (!current) return null
   const changes = lineDiff(lines, current, eols)
@@ -424,27 +424,101 @@ export function listIndentEdit(source: string, lineFrom: number, lineTo: number,
   return { changes, anchor, head: anchor }
 }
 
+/** Offset of an LSP position in `text`. */
+function offsetOf(text: string, position: { line: number; character: number }): number {
+  let offset = 0
+  for (let line = 0; line < position.line; line++) {
+    const next = text.indexOf('\n', offset)
+    if (next === -1) return text.length
+    offset = next + 1
+  }
+  return offset + position.character
+}
+
+/** Applies carve-lsp edits to `text`, mapping `cursor` through them (after an insertion at it). */
+function applyLspEdits(text: string, edits: readonly ContinuationEdit[], cursor: number): { text: string; cursor: number } {
+  const changes = edits.map((edit) => ({ from: offsetOf(text, edit.range.start), to: offsetOf(text, edit.range.end), insert: edit.newText })).sort((a, b) => a.from - b.from)
+  let out = ''
+  let at = 0
+  let mapped = cursor
+  for (const change of changes) {
+    out += text.slice(at, change.from) + change.insert
+    if (change.to <= cursor) mapped += change.insert.length - (change.to - change.from)
+    else if (change.from < cursor) mapped = out.length
+    at = change.to
+  }
+  return { text: out + text.slice(at), cursor: mapped }
+}
+
+/** The smallest single change turning `before` into `after`. */
+function diffEdit(before: string, after: string, cursor: number): FormatEdit {
+  let prefix = 0
+  const limit = Math.min(before.length, after.length)
+  while (prefix < limit && before[prefix] === after[prefix]) prefix++
+  let suffix = 0
+  while (suffix < limit - prefix && before[before.length - 1 - suffix] === after[after.length - 1 - suffix]) suffix++
+  return { changes: [{ from: prefix, to: before.length - suffix, insert: after.slice(prefix, after.length - suffix) }], anchor: cursor, head: cursor }
+}
+
+function lspEdit(source: string, edits: readonly ContinuationEdit[], cursor: number): FormatEdit {
+  const applied = applyLspEdits(source, edits, cursor)
+  return diffEdit(source, applied.text, applied.cursor)
+}
+
+// Quote markers and indent ahead of a line's own marker.
+const CONTAINER_LEAD = /^(?:[ \t]*> ?)*[ \t]*/
+// A content-less marker, checked boxes included, or carve-lsp's own set (which adds `: `).
+const BARE_ENTER_MARKER = { test: (rest: string): boolean => BARE_MARKER.test(rest) || BARE_CONTINUATION_MARKER.test(rest) }
+
+// The line starts of everything carve-lsp continues: list, quote, description,
+// footnote and table lines, and code or colon fence openers.
+const CONTINUABLE = /^[ \t]*(?:>|[-*.]|[0-9]+[.)]|[A-Za-z]+[.)]|:|\[\^|\||`{3,}|~{3,})/
+
+/** True when `lineText`, after its quote markers and indent, is only a content-less marker. */
+export function isBareMarkerLine(lineText: string): boolean {
+  const rest = lineText.slice(CONTAINER_LEAD.exec(lineText)![0].length)
+  return rest !== '' && BARE_ENTER_MARKER.test(rest)
+}
+
 /**
- * Enter after a list item writes the next marker; Enter on a content-less marker
- * removes it. Null when the line is not a list item, so the default Enter runs.
+ * Enter, following carve-lsp's on-type rules: the next list marker (also in a
+ * quote, after an attributed marker or in a description list), the quote or
+ * table prefix, and the closer of a code or colon fence opened on the line.
+ * A content-less marker or quote line is cleared instead, which ends the list
+ * or quote. The text after the caret moves to the new line behind the prefix.
+ *
+ * Null when the caret sits inside the line's container lead or marker, or the
+ * line continues nothing, so the default Enter runs.
  */
-export function listContinuationEdit(source: string, lineFrom: number, _lineTo: number, head: number): FormatEdit | null {
-  const { lines } = splitLines(source)
-  const line = source.slice(0, lineFrom).split('\n').length - 1
-  const text = lines[line] ?? ''
-  if (!itemParts(text)) return null
-  const { lines: measured, placeholder } = withPlaceholder(lines, line)
-  const lists = sourceLists(measured.join('\n'))
-  const item = lists?.items.get(line)
-  const parts = item && itemParts(measured[line]!)
-  if (!item || !parts || lists!.code.has(line)) return null
-  if (placeholder) return { changes: [{ from: lineFrom, to: lineFrom + text.length, insert: '' }], anchor: lineFrom, head: lineFrom }
-  const marker = nextOrdinal(item.list, parts.marker)
-  if (marker === null) return null
-  const separator = /\t/.test(parts.separator) ? parts.separator : ' '.repeat(Math.max(1, parts.marker.length + parts.separator.length - marker.length))
-  const task = !item.list.ordered ? TASK_BOX.exec(parts.rest) : null
-  const prefix = `${/^[ \t]*/.exec(text)![0]}${marker}${separator}${task ? `[ ]${task[1] || ' '}` : ''}`
-  return { changes: [{ from: head, to: head, insert: `\n${prefix}` }], anchor: head + prefix.length + 1, head: head + prefix.length + 1 }
+export function listContinuationEdit(source: string, lineFrom: number, lineTo: number, head: number): FormatEdit | null {
+  const before = source.slice(lineFrom, head)
+  const tail = source.slice(head, lineTo)
+  const lead = CONTAINER_LEAD.exec(before)![0]
+  const rest = before.slice(lead.length)
+  if (tail !== '' && (rest === '' || BARE_ENTER_MARKER.test(rest))) return null
+  // Every rule below parses the whole document; a line no rule can continue skips that.
+  if (!CONTINUABLE.test(before)) return null
+  // Zero-based index of the line Enter creates.
+  let line = 1
+  for (let index = source.indexOf('\n'); index !== -1 && index < lineFrom; index = source.indexOf('\n', index + 1)) line++
+  // Measured with the tail removed, so the new line is blank the way the rules expect.
+  const blank = source.slice(0, head) + '\n' + source.slice(lineTo)
+  const list = listContinuationEdits(blank, { line, character: 0 })
+  if (list) {
+    const applied = applyLspEdits(blank, list, head + 1)
+    const after = applied.text.slice(0, applied.cursor) + tail + applied.text.slice(applied.cursor)
+    return diffEdit(source, after, applied.cursor)
+  }
+  const prefix = continuationPrefix(source.slice(0, head) + '\n' + source.slice(head), line)
+  if (!prefix) return null
+  // A pipe-led line that is neither a table row nor a line-block line is text,
+  // and a row split mid-cell is not a new row.
+  if (/^[ \t]*\| $/.test(prefix) && (tail !== '' || (!/^[ \t]*\|.*\|[ \t]*$/.test(before) && !/^[ \t]*\| /.test(before)))) return null
+  const newline = prefix.indexOf('\n')
+  const ahead = newline === -1 ? prefix : prefix.slice(0, newline)
+  const behind = newline === -1 ? '' : prefix.slice(newline)
+  const cursor = head + 1 + ahead.length
+  return { changes: [{ from: head, to: head, insert: `\n${ahead}${behind}` }], anchor: cursor, head: cursor }
 }
 
 export function taskToggleEdit(source: string, lineFrom: number, lineTo: number): FormatEdit {

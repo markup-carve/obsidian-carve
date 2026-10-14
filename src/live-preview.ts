@@ -1,7 +1,8 @@
-import { type EditorMappedNode, type EditorSession, createEditorSession } from '@markup-carve/carve'
+import { type EditorMappedNode, createEditorSession } from '@markup-carve/carve'
 import { EditorSelection, EditorState, type Extension, Prec, type SelectionRange, StateEffect, StateField, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { type Command, Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType, keymap } from '@codemirror/view'
 import { substitutionBounds } from './substitution.js'
+import { openFenceBefore } from './fences.js'
 
 export type LivePresentation =
   | { kind: 'heading'; from: number; to: number; level: number }
@@ -16,6 +17,52 @@ export const LIVE_PREVIEW_IDLE_MS = 120
 export const LIVE_PREVIEW_MAX_SOURCE_LENGTH = 250_000
 export function livePreviewDelay(sourceLength: number): number | null {
   return sourceLength <= LIVE_PREVIEW_MAX_SOURCE_LENGTH ? LIVE_PREVIEW_IDLE_MS : null
+}
+
+/** Above this length the Live Preview parses a window around the viewport, not the whole note. */
+export const LIVE_PREVIEW_WINDOW_THRESHOLD = 40_000
+/** Text parsed beyond each side of the viewport. */
+export const LIVE_PREVIEW_WINDOW_MARGIN = 10_000
+
+/** A line after a blank line that starts at column 0, so no list item or quote above can own it. */
+function blockStartBefore(source: string, at: number): number {
+  let index = at
+  while (index > 0) {
+    const blank = source.lastIndexOf('\n\n', index - 1)
+    if (blank === -1) return 0
+    const start = blank + 2
+    if (start < source.length && !/\s/.test(source[start] as string)) {
+      const fence = openFenceBefore(source, start)
+      if (fence === null) return start
+      index = fence
+      continue
+    }
+    index = blank
+  }
+  return 0
+}
+
+/**
+ * The part of `source` the Live Preview parses for a viewport: all of it for a
+ * short note; otherwise from a top-level block start a margin ahead of the
+ * viewport to the first blank line a margin past it. A code fence open at the
+ * start moves the start back to its opener.
+ */
+export function livePreviewWindow(source: string, viewFrom: number, viewTo: number): { from: number; to: number } {
+  if (source.length <= LIVE_PREVIEW_WINDOW_THRESHOLD) return { from: 0, to: source.length }
+  const from = blockStartBefore(source, Math.max(0, viewFrom - LIVE_PREVIEW_WINDOW_MARGIN))
+  const blank = source.indexOf('\n\n', Math.min(source.length, viewTo + LIVE_PREVIEW_WINDOW_MARGIN))
+  return { from, to: blank === -1 ? source.length : blank + 1 }
+}
+
+function shifted(nodes: readonly EditorMappedNode[], offset: number): EditorMappedNode[] {
+  if (offset === 0) return nodes.slice()
+  return nodes.map((node) => ({ ...node, start: node.start + offset, end: node.end + offset, tokens: node.tokens.map((token) => ({ ...token, start: token.start + offset, end: token.end + offset })) }))
+}
+
+/** Nodes touching one of `ranges`; ancestors contain what they touch, so a node keeps its parents. */
+export function nodesInRanges(nodes: readonly EditorMappedNode[], ranges: readonly { from: number; to: number }[]): EditorMappedNode[] {
+  return nodes.filter((node) => ranges.some((range) => node.start <= range.to && node.end >= range.from))
 }
 
 function active(range: { start: number; end: number }, selections: readonly Pick<SelectionRange, 'from' | 'to'>[]): boolean {
@@ -526,15 +573,14 @@ class ImageWidget extends WidgetType {
 
 export type ImageResolver = (destination: string) => string | null
 
-function decorations(session: EditorSession, selections: readonly SelectionRange[], resolveImage?: ImageResolver): DecorationSet {
-  const snapshot = session.snapshot()
-  const ranges = livePresentations(snapshot.source, selections, snapshot.nodes).flatMap((item) => {
+function decorations(source: string, nodes: readonly EditorMappedNode[], selections: readonly SelectionRange[], resolveImage?: ImageResolver): DecorationSet {
+  const ranges = livePresentations(source, selections, nodes).flatMap((item) => {
     if (item.kind === 'hide') {
       // ViewPlugin decorations cannot replace a line break. Keep each break in
       // place and hide only the marker text on either side of it.
       const hidden = []
       for (let from = item.from; from < item.to;) {
-        const breakAt = snapshot.source.indexOf('\n', from)
+        const breakAt = source.indexOf('\n', from)
         const to = breakAt < 0 || breakAt >= item.to ? item.to : breakAt
         if (from < to) hidden.push(Decoration.replace({}).range(from, to))
         from = to + 1
@@ -551,9 +597,11 @@ function decorations(session: EditorSession, selections: readonly SelectionRange
   return Decoration.set(ranges, true)
 }
 
+interface ParsedWindow { source: string; from: number; to: number; nodes: EditorMappedNode[] }
+
 class LivePreviewState {
   decorations: DecorationSet = Decoration.none
-  private session: EditorSession | null = null
+  private parsed: ParsedWindow | null = null
   private source: string
   private timer: ReturnType<typeof setTimeout> | null = null
   constructor(view: EditorView, private resolveImage?: ImageResolver) {
@@ -561,23 +609,36 @@ class LivePreviewState {
     this.schedule(view)
   }
 
-
   update(update: ViewUpdate): void {
     if (update.docChanged) {
       this.source = update.state.doc.toString()
       this.decorations = this.decorations.map(update.changes)
       this.schedule(update.view)
+      return
     }
-    if (update.selectionSet && this.session?.snapshot().source === this.source) this.decorations = decorations(this.session, update.state.selection.ranges, this.resolveImage)
+    const parsed = this.parsed
+    if (!parsed || parsed.source !== this.source) return
+    if (update.viewportChanged) {
+      const { from, to } = update.view.viewport
+      if (from < parsed.from || to > parsed.to) this.schedule(update.view)
+    }
+    // Only what is on screen is presented, so a caret move on a large note
+    // costs the visible nodes rather than every node in the document.
+    if (update.selectionSet || update.viewportChanged) this.decorations = this.present(update.view)
   }
 
   destroy(): void { if (this.timer !== null) clearTimeout(this.timer) }
+
+  private present(view: EditorView): DecorationSet {
+    const parsed = this.parsed!
+    return decorations(parsed.source, nodesInRanges(parsed.nodes, view.visibleRanges), view.state.selection.ranges, this.resolveImage)
+  }
 
   private schedule(view: EditorView): void {
     if (this.timer !== null) clearTimeout(this.timer)
     const delay = livePreviewDelay(this.source.length)
     if (delay === null) {
-      this.session = null
+      this.parsed = null
       this.decorations = Decoration.none
       return
     }
@@ -585,10 +646,11 @@ class LivePreviewState {
     this.timer = setTimeout(() => {
       this.timer = null
       if (view.state.doc.toString() !== expected) return
-      this.session = createEditorSession(expected)
-      const snapshot = this.session.snapshot()
-      const markers = Decoration.set(liveTaskMarkers(snapshot.source, snapshot.nodes).filter((marker) => marker.from < marker.to).map((marker) => TASK_MARKER.range(marker.from, marker.to)), true)
-      this.decorations = decorations(this.session, view.state.selection.ranges, this.resolveImage)
+      const { from, to } = livePreviewWindow(expected, view.viewport.from, view.viewport.to)
+      const nodes = shifted(createEditorSession(expected.slice(from, to)).snapshot().nodes, from)
+      this.parsed = { source: expected, from, to, nodes }
+      const markers = Decoration.set(liveTaskMarkers(expected, nodes).filter((marker) => marker.from < marker.to).map((marker) => TASK_MARKER.range(marker.from, marker.to)), true)
+      this.decorations = this.present(view)
       // Also asks CodeMirror to sample the updated provider. A caret the markers now
       // cover moves after its box, and update() redraws for that selection.
       view.dispatch({ effects: setTaskMarkers.of(markers) })
