@@ -1,6 +1,7 @@
 import { parse as parseCarve, type BlockNode, type Document, type InlineNode } from '@markup-carve/carve'
 import { parse as parseYaml } from 'yaml'
 import { parse as parseToml } from 'smol-toml'
+import { wikilinkMatches } from './render.js'
 
 export interface CarveHeading { level: number; text: string; line: number; id?: string }
 export interface CarveLink { target: string; label: string; embed: boolean }
@@ -43,15 +44,28 @@ export function headingsFromDocument(document: Document): CarveHeading[] {
   return headings
 }
 
+function collectTags(node: unknown, tags: string[]): void {
+  if (node === null || typeof node !== 'object') return
+  const record = node as { type?: unknown; name?: unknown }
+  if (record.type === 'tag' && typeof record.name === 'string' && record.name !== '' && !tags.includes(record.name)) tags.push(record.name)
+  for (const [key, value] of Object.entries(record)) {
+    if (key === 'pos') continue
+    if (Array.isArray(value)) for (const child of value) collectTags(child, tags)
+    else if (value !== null && typeof value === 'object') collectTags(value, tags)
+  }
+}
+
+/** Tags and wikilinks come from the tree, so neither is indexed from code, comments or front matter. */
 export function extractMetadata(source: string): CarveMetadata {
   const document = parseCarve(source, { positions: true })
   const headings = headingsFromDocument(document)
   const links: CarveLink[] = []
-  for (const match of source.matchAll(/(!?)\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g)) {
-    const target = match[2]?.trim()
-    if (target) links.push({ target, label: match[3]?.trim() || target, embed: match[1] === '!' })
+  for (const match of wikilinkMatches(source, document)) {
+    const target = match.target.trim()
+    if (target) links.push({ target, label: match.alias.trim() || target, embed: match.embed })
   }
-  const tags = [...new Set([...source.matchAll(/(?:^|\s)#([\p{L}\p{N}_/-]+)/gu)].map((match) => match[1]).filter(Boolean) as string[])]
+  const tags: string[] = []
+  collectTags(document.children, tags)
   let properties: Record<string, unknown> = {}
   if (document.frontmatter) {
     try {

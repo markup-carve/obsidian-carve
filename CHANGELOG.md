@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Render a wikilink whose target holds spaces or parentheses as a link:
+  `[[My Note]]` and `[[Note (draft)]]` rendered as literal text in the reading
+  view. The destination is percent-encoded and decoded again on click (#69).
+- Leave wiki syntax alone inside code spans, fences, comments, math and after
+  a backslash escape: `` `[[Note]]` `` and `\[[Note]]` were turned into links.
+  The same rule now decides which wikilinks and tags the vault index records,
+  so a tag or wikilink in code, a comment or front matter no longer shows up
+  in the inspector or in backlinks. Tags follow the engine's tag syntax (#69).
+- A link destination with a malformed percent sequence such as `50%off` no
+  longer throws on click or aborts the reading view while resolving an
+  embed (#69).
+
 ## 0.1.3
 
 - Tab and Shift+Tab nest list items at the parent's content column (#63).
