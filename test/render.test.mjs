@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { carveToHtml } from '@markup-carve/carve'
 import { extractMetadata, withCrvExtension } from '../dist-test/metadata.js'
-import { renderCarve, rewriteWikiSyntax } from '../dist-test/render.js'
+import { renderCarve, rewriteWikiSyntax, safeDecodeURIComponent } from '../dist-test/render.js'
 import { appendOpaqueConstruct, editOpaqueWithPrompts, normalizeVisualHtml, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from '../dist-test/wysiwyg.js'
 
 test('the renderer produces Obsidian-ready HTML', () => {
@@ -163,4 +163,48 @@ test('protected constructs expose construct-aware visual editing fields', () => 
   assert.equal(editOpaqueWithPrompts(link, () => linkAnswers.shift()), '[[New|Readable]]')
   const math = sourceToVisualDocument('$`x`\n').opaque[0]
   assert.equal(editOpaqueWithPrompts(math, () => 'x + y'), '$`x + y`')
+})
+
+test('a wikilink target with spaces or parentheses still renders as a link', () => {
+  const html = renderCarve('See [[My Note]], [[Note (draft)]] and [[My Note#Some Heading|there]].\n')
+  assert.match(html, /<a href="My%20Note" class="carve-wikilink">My Note<\/a>/)
+  assert.match(html, /<a href="Note%20%28draft%29" class="carve-wikilink">Note \(draft\)<\/a>/)
+  assert.match(html, /<a href="My%20Note#Some%20Heading" class="carve-wikilink">there<\/a>/)
+  assert.equal(safeDecodeURIComponent('My%20Note'), 'My Note')
+})
+
+test('an embed with a spaced target keeps a resolvable marker', () => {
+  const html = renderCarve('![[My Embed]]\n')
+  assert.match(html, /class="carve-embed" data-carve-embed="My%20Embed"/)
+})
+
+test('wiki syntax inside code, comments, math and after an escape stays literal', () => {
+  const source = 'Code `[[A]]` and \\[[B]] and $`[[C]]` here.\n\n%% [[D]] %%\n\n```\n[[E]]\n```\n\n[[F]]\n'
+  const rewritten = rewriteWikiSyntax(source)
+  assert.equal(rewritten, source.replace('[[F]]', '[F](F){.carve-wikilink}'))
+  const html = renderCarve(source)
+  assert.match(html, /<code>\[\[A\]\]<\/code>/)
+  assert.match(html, /<code>\[\[E\]\]\n<\/code>/)
+  assert.doesNotMatch(html, /href="[ABCDE]"/)
+})
+
+test('a wikilink followed by attributes keeps them', () => {
+  assert.match(renderCarve('x [[A]]{#id} y\n'), /<a href="A" class="carve-wikilink" id="id">A<\/a>/)
+  assert.deepEqual(extractMetadata('x [[A]]{#id} y\n').links.map(({ target }) => target), ['A'])
+})
+
+test('wikilink offsets survive astral characters before them', () => {
+  assert.equal(rewriteWikiSyntax('😀 `x` [[A]]'), '😀 `x` [A](A){.carve-wikilink}')
+})
+
+test('metadata takes tags and wikilinks from the document, not from code or comments', () => {
+  const source = '---\ntags: [[X]]\n---\n\n#real [[Guide]]\n\n`#code [[InCode]]`\n\n%% #hidden [[Hidden]] %%\n\n```\n#fenced [[Fenced]]\n```\n'
+  const metadata = extractMetadata(source)
+  assert.deepEqual(metadata.tags, ['real'])
+  assert.deepEqual(metadata.links.map(({ target }) => target), ['Guide'])
+})
+
+test('a malformed percent sequence decodes to itself instead of throwing', () => {
+  assert.equal(safeDecodeURIComponent('50%off'), '50%off')
+  assert.equal(safeDecodeURIComponent('%E0%A4%A'), '%E0%A4%A')
 })

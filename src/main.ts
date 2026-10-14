@@ -4,7 +4,7 @@ import { EditorView } from '@codemirror/view'
 import { FuzzySuggestModal, Modal, Notice, Platform, Plugin, PluginSettingTab, Setting, TAbstractFile, TFile, TextFileView, WorkspaceLeaf, finishRenderMath, loadMermaid, loadPrism, normalizePath, renderMath, type App, type FuzzyMatch } from 'obsidian'
 import { CarveIndex } from './indexer'
 import { extractMetadata, headingsFromDocument, withCrvExtension, type CarveMetadata } from './metadata'
-import { ORIGIN_ATTRIBUTE, claimRenderedOrigins, originAt, renderCarve } from './render'
+import { ORIGIN_ATTRIBUTE, claimRenderedOrigins, originAt, renderCarve, safeDecodeURIComponent } from './render'
 import { directiveSiteAt, includeNavigation } from './include-navigation'
 import { IncludeCache, renderCarveWithIncludes, type IncludeDiagnostic, type VaultGateway } from './includes'
 import { carveClipboardPaste, carveClipboardPayload, writeCarveClipboard } from './clipboard'
@@ -762,7 +762,7 @@ export class CarveView extends TextFileView {
       // Content pulled in from another file resolves against THAT file: an
       // included child and an embedded note both carry their own origin.
       const origin = anchor.getAttribute(ORIGIN_ATTRIBUTE)
-      void this.app.workspace.openLinkText(withCrvExtension(decodeURIComponent(href)), origin ?? this.file?.path ?? '', false)
+      void this.app.workspace.openLinkText(withCrvExtension(safeDecodeURIComponent(href)), origin ?? this.file?.path ?? '', false)
     })
   }
 
@@ -881,7 +881,7 @@ export default class CarvePlugin extends Plugin {
   }
   async openCarve(path: string): Promise<void> { const file = this.app.vault.getAbstractFileByPath(normalizePath(path)); if (file instanceof TFile) await this.app.workspace.getLeaf(false).openFile(file) }
   resolveCarve(target: string, sourcePath: string): TFile | null {
-    const clean = decodeURIComponent(target.split('#', 1)[0] ?? ''); const wanted = withCrvExtension(clean); const parent = sourcePath.includes('/') ? sourcePath.slice(0, sourcePath.lastIndexOf('/')) : ''
+    const clean = safeDecodeURIComponent(target.split('#', 1)[0] ?? ''); const wanted = withCrvExtension(clean); const parent = sourcePath.includes('/') ? sourcePath.slice(0, sourcePath.lastIndexOf('/')) : ''
     for (const candidate of [normalizePath(`${parent}/${wanted}`), normalizePath(wanted)]) { const file = this.app.vault.getAbstractFileByPath(candidate); if (file instanceof TFile) return file }
     const basename = wanted.split('/').at(-1)?.toLocaleLowerCase()
     return this.app.vault.getFiles().find((file) => file.extension === 'crv' && file.name.toLocaleLowerCase() === basename) ?? null
