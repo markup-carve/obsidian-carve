@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Highlight the source editor with carve-grammars' Prism grammar, the one the
+  reading view already uses for `carve` fences, instead of a hand-written
+  tokenizer. A thematic break mid-note no longer paints the rest of the note
+  as front matter, a line of `[` or `[a](` no longer freezes the editor, and
+  fences, quotes, list items, escapes, intraword delimiters, comments, mark,
+  braced super- and subscript, definition lists, attribute lines and
+  CriticMarkup highlight the way the engine reads them. Colors follow the
+  theme, and only the visible part of a large note is tokenized (#71).
 - Render a wikilink whose target holds spaces or parentheses as a link:
   `[[My Note]]` and `[[Note (draft)]]` rendered as literal text in the reading
   view. The destination is percent-encoded and decoded again on click (#69).

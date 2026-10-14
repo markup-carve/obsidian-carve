@@ -19,7 +19,10 @@ The plugin registers `.crv` as its own Obsidian view and provides four modes:
   (carve-grammars' Prism grammar) and the lines of a `{.diff}` fence.
 - **Source** uses a full CodeMirror 6 editor with Carve highlighting, line
   numbers, search, history, selections, standard editing keys, and semantic
-  Live Preview. Authored markers hide away from the cursor and reappear exactly
+  Live Preview. Highlighting uses the same carve-grammars Prism grammar as the
+  reading view, with wikilinks added and colors taken from the theme's code,
+  link and tag variables. It covers the visible part of a note plus a margin
+  and refreshes shortly after typing stops, so a large note stays responsive. Authored markers hide away from the cursor and reappear exactly
   where they can be edited.
 - **Live split** keeps the CodeMirror source and rendered document side by side
   and refreshes the preview as you type. Its source pane deliberately remains a
