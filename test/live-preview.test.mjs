@@ -29,6 +29,41 @@ test('list items and table rows keep their line styling under the cursor', () =>
   assert.equal(table.filter((item) => item.kind === 'mark' && item.className === 'carve-live-table-cell').length, 0)
 })
 
+test('a continued table cell hides the wrap and pipe markers on each source line', () => {
+  const source = '|= A |= B |\n| *x* | [l](u) |\n+ `y` | second |\n'
+  const shown = livePresentations(source, [])
+  assert.equal(shown.filter((item) => item.kind === 'line' && item.className === 'carve-live-table-row').length, 3)
+  assert.ok(shown.some((item) => item.kind === 'hide' && source.slice(item.from, item.to).includes('+')))
+  assert.ok(shown.some((item) => item.kind === 'mark' && source.slice(item.from, item.to) === 'second'))
+  assert.ok(shown.some((item) => item.kind === 'mark' && source.slice(item.from, item.to) === '`y`'))
+})
+
+test('fenced blocks keep their line breaks when Live Preview hides markers', async () => {
+  const window = new Window()
+  const saved = {}
+  for (const name of ['window', 'document', 'navigator', 'MutationObserver', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'Node', 'HTMLElement']) {
+    saved[name] = Object.getOwnPropertyDescriptor(globalThis, name)
+    Object.defineProperty(globalThis, name, { value: name === 'window' ? window : window[name], configurable: true, writable: true })
+  }
+  try {
+    const { EditorView } = await import('@codemirror/view')
+    const { EditorState } = await import('@codemirror/state')
+    const parent = window.document.createElement('div')
+    window.document.body.appendChild(parent)
+    const doc = 'start\n\n```js\ncode\n```\n\n::: note\nbody\n:::\n'
+    const view = new EditorView({ parent, state: EditorState.create({ doc, selection: { anchor: 0 }, extensions: [createCarveLivePreview()] }) })
+    await new Promise((resolve) => setTimeout(resolve, LIVE_PREVIEW_IDLE_MS + 40))
+    assert.match(parent.textContent, /code/)
+    assert.match(parent.textContent, /body/)
+    view.destroy()
+  } finally {
+    for (const name of Object.keys(saved)) {
+      if (saved[name]) Object.defineProperty(globalThis, name, saved[name])
+      else delete globalThis[name]
+    }
+  }
+})
+
 test('inline markers hide and semantic styling remains', () => {
   assert.deepEqual(livePresentations('A *strong* choice', [{ from: 17, to: 17 }]), [
     { kind: 'hide', from: 2, to: 3 },
@@ -380,12 +415,12 @@ test('Backspace at a task text removes box and bullet; the text becomes a paragr
   const cases = [
     // [source, caret before, expected source, expected html]
     ['- [ ] alpha\n- [ ] beta\n- [ ] gamma\n', 'beta', '- [ ] alpha\n\nbeta\n\n- [ ] gamma\n',
-      '<ul>\n  <li><input type="checkbox" disabled aria-label="alpha"> alpha</li>\n</ul>\n<p>beta</p>\n<ul>\n  <li><input type="checkbox" disabled aria-label="gamma"> gamma</li>\n</ul>'],
+      '<ul class="task-list">\n  <li><input type="checkbox" disabled aria-label="alpha"> alpha</li>\n</ul>\n<p>beta</p>\n<ul class="task-list">\n  <li><input type="checkbox" disabled aria-label="gamma"> gamma</li>\n</ul>'],
     ['- [x] alpha\n', 'alpha', 'alpha\n', '<p>alpha</p>'],
     ['Intro\n\n- [ ] alpha\n- [ ] beta\n', 'alpha', 'Intro\n\nalpha\n\n- [ ] beta\n', null],
     ['- a\n  - [ ] child\n', 'child', '- a\n\n  child\n', '<ul>\n  <li><p>a</p>\n    <p>child</p>\n  </li>\n</ul>'],
     ['> - [ ] a\n> - [ ] b\n', 'b', '> - [ ] a\n>\n> b\n', null],
-    ['- [ ] first\n\n  second\n- [ ] next\n', 'first', 'first\n\n  second\n\n- [ ] next\n', '<p>first</p>\n<p>second</p>\n<ul>\n  <li><input type="checkbox" disabled aria-label="next"> next</li>\n</ul>'],
+    ['- [ ] first\n\n  second\n- [ ] next\n', 'first', 'first\n\n  second\n\n- [ ] next\n', '<p>first</p>\n<p>second</p>\n<ul class="task-list">\n  <li><input type="checkbox" disabled aria-label="next"> next</li>\n</ul>'],
   ]
   for (const [source, word, expected, html] of cases) {
     const head = source.indexOf(word)

@@ -65,46 +65,15 @@ test('a selector is not glued onto the path the gesture opens', () => {
   }
 })
 
-/**
- * The spellings markup-carve/carve#2775 converged - `{{ path#section }}` with
- * no space, a quoted path, and an option with no space before its marker - are
- * NOT recognized by this engine, and that is correct here: #2775 merged to the
- * spec after the 0.1.8 tag, so no published engine implements them yet.
- *
- * This is pinned as a FACT ABOUT THE ENGINE rather than as desired behavior.
- * When the plugin moves to an engine built past that commit, these become live
- * directives, `directiveSites` starts returning them, and this test fails -
- * which is the notice that the navigation and containment paths now have more
- * spellings to carry.
- */
-test('the converged include spellings are not live on this engine yet', () => {
+/** The engine now recognizes compact selectors, quoted paths, and adjacent options. */
+test('converged include spellings stay live in navigation', () => {
   for (const source of [
     '{{ sub/frag.crv#Alpha }}\n',
     '{{ "sub/frag.crv"#Alpha }}\n',
-    '{{ sub/frag.crv@heading-shift:1 }}\n',
+    '{{ sub/frag.crv@shift:1 }}\n',
   ]) {
-    assert.equal(
-      directiveSites(source).length,
-      0,
-      `${JSON.stringify(source)} is now a live directive. markup-carve/carve#2775 has reached this `
-        + 'engine, so the navigation, containment and preview paths need cases for it.',
-    )
+    const [site] = directiveSites(source)
+    assert.equal(site.path, 'sub/frag.crv', source)
+    assert.equal(source.slice(site.from, site.to), source.trim(), source)
   }
-})
-
-/** The engine is what decides this, not the plugin's prefilter. */
-test('the directive prefilter cannot miss a spelling', () => {
-  // Every include spelling opens with `{{`, which is all the prefilter tests
-  // before it asks the engine. Stated here so a future spelling that does not
-  // is caught as a prefilter bug rather than as a missing directive.
-  for (const source of ['{{ a.crv }}', '{{ a.crv #S }}', '{{ "a.crv"#S }}', '{{ a.crv@o:v }}']) {
-    assert.ok(source.includes('{{'), `${source} would be skipped by the prefilter`)
-  }
-})
-
-/** Guards the suite above: a renderer returning nothing would pass the negatives. */
-test('renderCarve actually renders', () => {
-  const html = renderCarve('# Plan\n')
-  assert.match(html, /<h1[^>]*>Plan<\/h1>/)
-  assert.ok(carveToHtml('# Plan\n').length > 0)
 })

@@ -432,6 +432,7 @@ export function listContinuationEdit(source: string, lineFrom: number, _lineTo: 
   const { lines } = splitLines(source)
   const line = source.slice(0, lineFrom).split('\n').length - 1
   const text = lines[line] ?? ''
+  if (!itemParts(text)) return null
   const { lines: measured, placeholder } = withPlaceholder(lines, line)
   const lists = sourceLists(measured.join('\n'))
   const item = lists?.items.get(line)
