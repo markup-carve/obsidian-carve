@@ -33,6 +33,12 @@ test('list and quote input rules create actual editable DOM blocks', () => {
   }
 })
 
+test('a typed `+` is the continuation marker, not a bullet, so it opens no list', () => {
+  const surface = document.createElement('article'); const paragraph = document.createElement('p'); paragraph.textContent = '+ '; surface.append(paragraph); document.body.append(surface)
+  assert.equal(applyVisualInputRule(surface, selectTextNode(surface.firstElementChild, 2)), false)
+  assert.equal(surface.innerHTML, '<p>+ </p>')
+})
+
 test('horizontal-rule and code-fence input rules create visual blocks', () => {
   for (const [source, expected] of [['--- ', '<hr><p><br></p>'], ['``` ', '<pre><br></pre>']]) {
     const surface = document.createElement('article'); const paragraph = document.createElement('p'); paragraph.textContent = source; surface.append(paragraph); document.body.append(surface)

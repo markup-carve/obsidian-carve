@@ -47,7 +47,7 @@ export function applyVisualInputRule(surface: HTMLElement, selection: Selection 
     if (!replacement.textContent) replacement.append(document.createElement('br'))
     block.replaceWith(replacement); placeCaretAtStart(replacement); return true
   }
-  const list = /^(?:[-*+] |1[.)] )$/.exec(text)
+  const list = /^(?:[-*] |1[.)] )$/.exec(text)
   if (list) {
     const parent = document.createElement(list[0].startsWith('1') ? 'ol' : 'ul')
     const item = document.createElement('li'); item.append(document.createElement('br')); parent.append(item)
