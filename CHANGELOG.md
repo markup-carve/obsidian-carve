@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.4
+
+- Typing `+ ` in the visual editor no longer turns the line into a bullet:
+  `+` is Carve's continuation marker, not a list marker (#77).
+- One Carve engine, 0.1.13, serves the reading view, Live Preview and the
+  editor helpers, with Carve 0.1.11 syntax: a lone `+` at a nested item's own
+  marker column, `>+` read as text, code-block includes with `@region` and
+  `@code`, and `{table}` above a `csv` or `tsv` include. Before, the preview
+  ran 0.1.11 while the bundled carve-lsp and carve-grammars ran 0.1.12.
+- Bundle carve-grammars 0.1.17 and carve-lsp 0.1.13 (#75, #76).
+
 ## 0.1.3
 
 - Enter and Tab in the source editor follow carve-lsp's on-type rules. Enter
