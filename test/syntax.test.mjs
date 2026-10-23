@@ -168,3 +168,10 @@ test('a distant window stays bounded when no blank line is near', () => {
   const window = highlightWindow(source, view, view + 2000)
   assert.ok(window.from >= view - 2 * HIGHLIGHT_MARGIN, `starts at ${window.from}`)
 })
+
+test('a + is the continuation marker only where Carve 0.1.11 attaches it', () => {
+  has('- a\n+\n> q\n', '+', 'continuation-marker')
+  has('- +\n> q\n', '+', 'continuation-marker')
+  lacks('> - a\n>+\n> b\n', '+', 'continuation-marker')
+  lacks('- a\n  +\nb\n', '+', 'continuation-marker')
+})

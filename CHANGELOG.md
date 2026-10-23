@@ -9,7 +9,10 @@
   marker column, `>+` read as text, code-block includes with `@region` and
   `@code`, and `{table}` above a `csv` or `tsv` include. Before, the preview
   ran 0.1.11 while the bundled carve-lsp and carve-grammars ran 0.1.12.
-- Bundle carve-grammars 0.1.17 and carve-lsp 0.1.13 (#75, #76).
+- Bundle carve-grammars 0.1.18 and carve-lsp 0.1.14 (#75, #76, #79, #80). The
+  source editor colors a `+` as the continuation marker only where Carve 0.1.11
+  attaches it, and Tab and Shift+Tab keep a continuation marker on the moved
+  item's marker column.
 
 ## 0.1.3
 
