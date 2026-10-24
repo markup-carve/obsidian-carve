@@ -11,6 +11,7 @@ Visual list editing keeps semantic blocks intact, and source highlighting follow
 ### Improvements
 
 - Source highlighting follows carve-grammars 0.1.19 scopes (#81).
+- Reading, Live Preview, and syntax highlighting follow Carve 0.1.14 and carve-grammars 0.1.20 (#88).
 
 **Full Changelog**: https://github.com/markup-carve/obsidian-carve/compare/0.1.4...0.1.5
 
