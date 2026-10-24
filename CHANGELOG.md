@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.5
+
+Visual list editing keeps semantic blocks intact, and source highlighting follows the current grammar scopes.
+
+### Fixes
+
+- Leaving a visual list preserves its semantic blocks instead of flattening their content (#86).
+
+### Improvements
+
+- Source highlighting follows carve-grammars 0.1.19 scopes (#81).
+
+**Full Changelog**: https://github.com/markup-carve/obsidian-carve/compare/0.1.4...0.1.5
+
 ## 0.1.4
 
 - Typing `+ ` in the visual editor no longer turns the line into a bullet:
