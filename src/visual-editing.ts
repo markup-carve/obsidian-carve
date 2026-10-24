@@ -272,7 +272,7 @@ function endEmptyItem(item: HTMLLIElement, list: HTMLElement): boolean {
 }
 
 /** Turn a list item into a paragraph where it stands, splitting the list around it. */
-const BLOCK_TAGS = /^(?:P|UL|OL|BLOCKQUOTE|PRE|DIV|TABLE|HR|H[1-6]|CARVE-OPAQUE)$/
+const BLOCK_TAGS = /^(?:P|UL|OL|DL|BLOCKQUOTE|PRE|DIV|ASIDE|SECTION|ARTICLE|MAIN|NAV|HEADER|FOOTER|ADDRESS|FIGURE|DETAILS|FORM|FIELDSET|TABLE|HR|H[1-6]|CARVE-OPAQUE)$/
 
 function blankText(node: Node): boolean { return node.nodeType === 3 && !(node.textContent ?? '').trim() }
 
