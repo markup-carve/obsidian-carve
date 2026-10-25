@@ -92,3 +92,12 @@ test('source highlighting maps grammar tokens onto theme variables', async () =>
   assert.equal(styleOf('%% hidden %%').color, 'rgb(7, 8, 9)')
   assert.match(styleOf('bold').fontWeight, /^(700|bold)$/)
 })
+
+test('progress and blocked task states have distinct outlines', () => {
+  const { box } = task('carve-preview markdown-rendered', '- [/] working\n- [!] blocked\n')
+  assert.equal(box('working').outlineStyle, 'solid')
+  assert.equal(box('blocked').outlineStyle, 'dashed')
+  for (const [state, style] of [['/', 'solid'], ['!', 'dashed']]) {
+    assert.match(css, new RegExp(`\\.carve-live-task-checkbox\\[data-task-state="${state}"\\] \\{ outline: 2px ${style}`))
+  }
+})

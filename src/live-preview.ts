@@ -82,9 +82,9 @@ function taskBox(source: string, node: EditorMappedNode, children: readonly Edit
   const content = children?.find((candidate) => candidate.type === 'paragraph')
   if (!content || content.start <= node.start) return null
   const marker = source.slice(node.start, content.start)
-  const task = /^[-*] [ \t]*\[([ xX_>?-])\]( [ \t]*)$/.exec(marker)
+  const task = /^[-*] [ \t]*\[([ xX_>?/!-])\]( [ \t]*)$/.exec(marker)
   if (task) return { state: task[1]!, hideEnd: content.start, content }
-  const pending = /^\[([ xX_>?-])\]$/.exec(source.slice(content.start, content.end))
+  const pending = /^\[([ xX_>?/!-])\]$/.exec(source.slice(content.start, content.end))
   // Only a box and, at most, nested lists: a later paragraph makes it ordinary item text.
   if (!pending || !/^[-*] [ \t]*$/.test(marker) || children!.some((child) => child !== content && child.type !== 'list')) return null
   const blank = /^[ \t]*/.exec(source.slice(content.end))![0]
@@ -385,7 +385,7 @@ class MarkerWidget extends WidgetType {
 
 /** The edit that toggles the task marker of the list item starting at `at`: `x` unchecks, any other state checks. */
 export function taskToggle(source: string, at: number): { from: number; to: number; insert: string } | null {
-  const marker = /^[-*] [ \t]*\[([ xX_>?-])\]/.exec(source.slice(at, at + 64))
+  const marker = /^[-*] [ \t]*\[([ xX_>?/!-])\]/.exec(source.slice(at, at + 64))
   if (!marker) return null
   const from = at + marker[0].length - 2
   return { from, to: from + 1, insert: /[xX]/.test(marker[1]!) ? ' ' : 'x' }
@@ -439,7 +439,7 @@ const BLANK_LINE = /^[ \t>]*$/
  */
 export function taskBackspaceEdit(source: string, head: number): TaskBackspaceEdit | null {
   const lineStart = source.lastIndexOf('\n', head - 1) + 1
-  if (!/^[ \t>]*[-*] [ \t]*\[[ xX_>?-]\][ \t]*$/.test(source.slice(lineStart, head))) return null
+  if (!/^[ \t>]*[-*] [ \t]*\[[ xX_>?/!-]\][ \t]*$/.test(source.slice(lineStart, head))) return null
   const marker = liveTaskMarkers(source).find((candidate) => candidate.to === head)
   if (!marker) return null
   const prefix = source.slice(lineStart, marker.from)

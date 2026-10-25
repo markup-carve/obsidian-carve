@@ -614,3 +614,12 @@ test('a long note still gets Live Preview decorations from its windowed parse', 
     await window.happyDOM.close()
   }
 })
+
+test('progress, blocked, and underscore task markers stay visible as tasks', () => {
+  for (const state of ['/', '!', '_']) {
+    const source = `- [${state}] work`
+    const presentation = livePresentations(source, [{ from: source.length, to: source.length }])
+    assert.ok(presentation.some((part) => part.kind === 'task' && part.state === state), state)
+    assert.ok(presentation.some((part) => part.kind === 'hide' && part.from === 0 && part.to === 6), state)
+  }
+})

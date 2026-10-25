@@ -96,10 +96,10 @@ export function simpleTableEdit(source: string, at: number, direction: TableDire
 export type LinePrefix = 'bullet' | 'ordered' | 'task' | 'quote'
 export function linePrefixEdit(source: string, lineFrom: number, lineTo: number, kind: LinePrefix): FormatEdit {
   const line = source.slice(lineFrom, lineTo)
-  const prefixes: Record<LinePrefix, RegExp> = { bullet: /^[-*] [ \t]*/, ordered: /^(?:\.|(?:[0-9]+|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+)[.)]) [ \t]*/, task: /^[-*] [ \t]*\[[ xX_>?-]\] [ \t]*/, quote: /^>[ \t]+/ }
+  const prefixes: Record<LinePrefix, RegExp> = { bullet: /^[-*] [ \t]*/, ordered: /^(?:\.|(?:[0-9]+|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+)[.)]) [ \t]*/, task: /^[-*] [ \t]*\[[ xX_>?/!-]\] [ \t]*/, quote: /^>[ \t]+/ }
   const insertions: Record<LinePrefix, string> = { bullet: '- ', ordered: '1. ', task: '- [ ] ', quote: '> ' }
   const own = prefixes[kind].exec(line)?.[0] ?? ''
-  const any = /^(?:[-*] [ \t]*(?:\[[ xX_>?-]\] [ \t]*)?|>[ \t]+)/.exec(line)?.[0] ?? ''
+  const any = /^(?:[-*] [ \t]*(?:\[[ xX_>?/!-]\] [ \t]*)?|>[ \t]+)/.exec(line)?.[0] ?? ''
   const insert = own ? '' : insertions[kind]
   return { changes: [{ from: lineFrom, to: lineFrom + (own ? own.length : any.length), insert }], anchor: lineFrom + insert.length, head: lineFrom + insert.length }
 }
@@ -188,7 +188,7 @@ const ITEM_MARKER = /^([ \t]*)([-*]|\.|(?:[0-9]+|[A-Za-z]+)[.)])( [ \t]*)/
 // Alpha and roman stay disjoint so a pattern that repeats a marker cannot backtrack exponentially.
 export const BULLET_MARKER = '[-*]'
 export const ORDERED_MARKER = String.raw`(?:\.|(?:[0-9]+|[A-Za-z]|[ivxlcdm]{2,}|[IVXLCDM]{2,})[.)])`
-export const TASK_BOX_MARKER = String.raw`\[[ xX_>?-]\]`
+export const TASK_BOX_MARKER = String.raw`\[[ xX_>?/!-]\]`
 const BARE_MARKER = new RegExp(String.raw`^[ \t]*(?:${BULLET_MARKER} [ \t]*(?:${TASK_BOX_MARKER} [ \t]*)?|${ORDERED_MARKER} [ \t]*)$`)
 // A content-less marker parses as lazy text, so it is measured with a placeholder.
 const PLACEHOLDER = 'x'
@@ -523,7 +523,7 @@ export function listContinuationEdit(source: string, lineFrom: number, lineTo: n
 
 export function taskToggleEdit(source: string, lineFrom: number, lineTo: number): FormatEdit {
   const line = source.slice(lineFrom, lineTo)
-  const task = /^([ \t]*[-*] [ \t]*)\[([ xX_>?-])\]( [ \t]*|$)/.exec(line)
+  const task = /^([ \t]*[-*] [ \t]*)\[([ xX_>?/!-])\]( [ \t]*|$)/.exec(line)
   if (task) {
     const from = lineFrom + task[1]!.length + 1; const checked = task[2]!.toLowerCase() === 'x'
     return { changes: [{ from, to: from + 1, insert: checked ? ' ' : 'x' }], anchor: from, head: from }
