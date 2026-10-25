@@ -69,3 +69,9 @@ test('without a highlighter, an ordinary fence is left unchanged', () => {
   highlightCodeBlocks(root, null)
   assert.equal(root.innerHTML, before)
 })
+
+test('Carve fences scope progress, blocked, and open alias task markers', async () => {
+  const root = await rendered('```carve\n- [/] progress\n- [!] blocked\n- [_] open\n```\n')
+  const code = root.querySelector('pre > code.language-carve')
+  assert.deepEqual(Array.from(code.querySelectorAll('.token.list .token.constant'), (token) => token.textContent), ['[/]', '[!]', '[_]'])
+})
