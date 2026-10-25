@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.6
+
+Progress and blocked tasks keep their state while editing, and source highlighting follows the current grammar scopes.
+
+### Fixes
+
+- Typed task markers, Live Preview, and visual editing preserve progress `[/]`, blocked `[!]`, and open alias `[_]` states (#91).
+
+### Improvements
+
+- Source highlighting distinguishes progress and blocked task markers and table roles (#93).
+
+**Full Changelog**: https://github.com/markup-carve/obsidian-carve/compare/0.1.5...0.1.6
+
 ## 0.1.5
 
 Visual list editing keeps semantic blocks intact, and source highlighting follows the current grammar scopes.
