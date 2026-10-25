@@ -439,3 +439,15 @@ test('ArrowLeft from a task stops at an empty task or the parent item above', ()
   const [node, offset] = caret()
   assert.equal(node.textContent.slice(0, offset).trim().endsWith('parent'), true)
 })
+
+test('typing extended task states in a visual list preserves the state', () => {
+  for (const state of ['/', '!', '_']) {
+    const surface = document.createElement('article')
+    surface.innerHTML = `<ul><li>[${state}] work</li></ul>`
+    document.body.append(surface)
+    assert.equal(applyVisualInputRule(surface, selectTextNode(surface.querySelector('li'), 4)), true)
+    assert.equal(surface.querySelector('li').getAttribute('data-task-state'), state)
+    assert.equal(visualHtmlToSource(surface.innerHTML).source.trimEnd(), `- [${state}] work`)
+    surface.remove()
+  }
+})

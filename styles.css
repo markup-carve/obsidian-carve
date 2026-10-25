@@ -288,3 +288,7 @@
 .carve-editor .carve-live-task-checkbox[data-task-state=">"] { outline: 1px solid var(--checkbox-color, var(--interactive-accent)); }
 :is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li[data-task-state="?"] > input[type="checkbox"]:first-child,
 .carve-editor .carve-live-task-checkbox[data-task-state="?"] { outline: 1px dotted var(--text-muted); }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li[data-task-state="/"] > input[type="checkbox"]:first-child,
+.carve-editor .carve-live-task-checkbox[data-task-state="/"] { outline: 2px solid var(--checkbox-color, var(--interactive-accent)); }
+:is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li[data-task-state="!"] > input[type="checkbox"]:first-child,
+.carve-editor .carve-live-task-checkbox[data-task-state="!"] { outline: 2px dashed var(--text-muted); }

@@ -34,9 +34,10 @@ export function applyVisualInputRule(surface: HTMLElement, selection: Selection 
   if (!block) return false
   const text = block.textContent ?? ''
   if (block.tagName === 'LI') {
-    const task = /^\[([ xX])\]\s/.exec(text)
+    const task = /^\[([ xX_>?/!-])\]\s/.exec(text)
     if (!task) return false
     const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = task[1]!.toLowerCase() === 'x'; checkbox.setAttribute('aria-label', 'Toggle task')
+    if (!/[ xX]/.test(task[1]!)) block.setAttribute('data-task-state', task[1]!)
     block.textContent = text.slice(task[0].length); block.prepend(checkbox); placeCaretAtEnd(block); return true
   }
   if (!/^(?:P|DIV)$/.test(block.tagName)) return false

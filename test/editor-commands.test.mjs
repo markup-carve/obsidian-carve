@@ -239,3 +239,11 @@ test('source Enter on a line nothing continues skips the document parse', () => 
   assert.ok(elapsed < 100, `a plain line took ${elapsed.toFixed(0)} ms`)
   assert.ok(enter(source, source.length).endsWith('- item\n- |'), 'a list line in the same note still continues')
 })
+
+test('task commands recognize progress and blocked markers', () => {
+  for (const state of ['/', '!']) {
+    const source = `- [${state}] work`
+    assert.equal(apply(source, taskToggleEdit(source, 0, source.length).changes), '- [x] work')
+    assert.equal(apply(source, linePrefixEdit(source, 0, source.length, 'task').changes), 'work')
+  }
+})
