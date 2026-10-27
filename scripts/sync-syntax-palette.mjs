@@ -1,0 +1,24 @@
+import { readFileSync, writeFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import palette from '../assets/syntax-palette.json' with { type: 'json' }
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const file = resolve(root, 'styles.css')
+const source = readFileSync(file, 'utf8')
+const start = '/* BEGIN generated Carve syntax palette */'
+const end = '/* END generated Carve syntax palette */'
+const vars = (colors) => Object.entries(colors).filter(([key]) => !key.startsWith('table')).map(([key, value]) =>
+  `  --carve-syntax-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}: ${value};`).join('\n')
+const tableVars = (colors) => ['Boundary', 'Header', 'Operator', 'Span', 'Continuation']
+  .map((role) => `  --carve-table-${role.toLowerCase()}: ${colors[`table${role}`]};`).join('\n')
+const block = `${start}\n.theme-light .carve-view {\n${vars(palette.light)}\n${tableVars(palette.light)}\n}\n.theme-dark .carve-view {\n${vars(palette.dark)}\n${tableVars(palette.dark)}\n}\n\n.carve-view :where(.language-carve, .language-crv) .token.definition-term,\n.carve-view :where(.language-carve, .language-crv) .token.definition-term .token.punctuation,\n.carve-view :where(.language-carve, .language-crv) .token.definition-list > .token.punctuation { color: var(--carve-syntax-definition); }\n.carve-view :where(.language-carve, .language-crv) .token.list.punctuation { color: var(--carve-syntax-list); font-weight: 700; }\n.carve-view :where(.language-carve, .language-crv) .token.list .token.constant { color: var(--carve-syntax-task); }\n.carve-view :where(.language-carve, .language-crv) .token.code-block > .token.punctuation { color: var(--carve-syntax-muted); }\n.carve-view :where(.language-carve, .language-crv) .token.code-block > .token.language { color: var(--carve-syntax-language); }\n.carve-view :where(.language-carve, .language-crv) .token.table-boundary { color: var(--carve-table-boundary); }\n.carve-view :where(.language-carve, .language-crv) .token.table-header { color: var(--carve-table-header); font-weight: 650; }\n.carve-view :where(.language-carve, .language-crv) .token.table-operator,\n.carve-view :where(.language-carve, .language-crv) .token.table-alignment { color: var(--carve-table-operator); font-weight: 650; }\n.carve-view :where(.language-carve, .language-crv) .token.table-span { color: var(--carve-table-span); font-weight: 650; }\n.carve-view :where(.language-carve, .language-crv) .token.table-continuation-marker { color: var(--carve-table-continuation); font-weight: 650; }\n\n.carve-source-editor .carve-tok-definition-term { color: var(--carve-syntax-definition); }\n.carve-source-editor .carve-tok-list { color: var(--carve-syntax-list); }\n.carve-source-editor .carve-tok-list.carve-tok-constant { color: var(--carve-syntax-task); }\n.carve-source-editor .carve-tok-code-block.carve-tok-language { color: var(--carve-syntax-language); }\n.carve-source-editor .carve-tok-code-block.carve-tok-punctuation { color: var(--carve-syntax-muted); }\n.carve-source-editor .carve-tok-table-header { color: var(--carve-table-header); font-weight: 650; }\n.carve-source-editor .carve-tok-table-operator, .carve-source-editor .carve-tok-table-alignment { color: var(--carve-table-operator); font-weight: 650; }\n.carve-source-editor .carve-tok-table-span { color: var(--carve-table-span); font-weight: 650; }\n.carve-source-editor .carve-tok-table-continuation-marker { color: var(--carve-table-continuation); font-weight: 650; }\n.carve-source-editor .carve-tok-table-boundary { color: var(--carve-table-boundary); }\n${end}`
+const from = source.indexOf(start)
+const to = source.indexOf(end)
+if ((from < 0) !== (to < 0) || (from >= 0 && to < from)) throw new Error('styles.css has incomplete palette markers')
+const expected = from < 0 ? `${source.trimEnd()}\n\n${block}\n` : source.slice(0, from) + block + source.slice(to + end.length)
+if (process.argv.includes('--check')) {
+  if (from < 0 || source !== expected) throw new Error('styles.css syntax palette differs from assets/syntax-palette.json')
+} else {
+  writeFileSync(file, expected)
+}

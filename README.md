@@ -20,6 +20,9 @@ The plugin registers `.crv` as its own view and provides four modes:
   code blocks, `carve` fences included, with Obsidian's Prism.
 - **Source** uses CodeMirror 6 with highlighting, search, history, and semantic
   Live Preview.
+- Carve syntax colors in Source and Reading follow the vault's light or dark
+  theme. Their palette is copied from carve-grammars commit `648d3409` into
+  `assets/syntax-palette.json` and generated into `styles.css`.
 - **Live split** keeps source and rendered output side by side.
 - **Visual (experimental)** edits rendered prose and imports each change
   through Carve's safe HTML importer.

@@ -292,3 +292,61 @@
 .carve-editor .carve-live-task-checkbox[data-task-state="/"] { outline: 2px solid var(--checkbox-color, var(--interactive-accent)); }
 :is(.carve-preview, .carve-visual-editor, .carve-construct-preview) li[data-task-state="!"] > input[type="checkbox"]:first-child,
 .carve-editor .carve-live-task-checkbox[data-task-state="!"] { outline: 2px dashed var(--text-muted); }
+
+/* BEGIN generated Carve syntax palette */
+.theme-light .carve-view {
+  --carve-syntax-background: #ffffff;
+  --carve-syntax-foreground: #24292f;
+  --carve-syntax-code-background: #f6f8fa;
+  --carve-syntax-definition: #6f42c1;
+  --carve-syntax-list: #735c0f;
+  --carve-syntax-task: #1a7f37;
+  --carve-syntax-language: #0969da;
+  --carve-syntax-muted: #57606a;
+  --carve-table-boundary: #959da5;
+  --carve-table-header: #005cc5;
+  --carve-table-operator: #e36209;
+  --carve-table-span: #6f42c1;
+  --carve-table-continuation: #22863a;
+}
+.theme-dark .carve-view {
+  --carve-syntax-background: #0d1117;
+  --carve-syntax-foreground: #c9d1d9;
+  --carve-syntax-code-background: #0d1117;
+  --carve-syntax-definition: #d2a8ff;
+  --carve-syntax-list: #f2cc60;
+  --carve-syntax-task: #3fb950;
+  --carve-syntax-language: #79c0ff;
+  --carve-syntax-muted: #8b949e;
+  --carve-table-boundary: #6a737d;
+  --carve-table-header: #79b8ff;
+  --carve-table-operator: #ffab70;
+  --carve-table-span: #b392f0;
+  --carve-table-continuation: #85e89d;
+}
+
+.carve-view :where(.language-carve, .language-crv) .token.definition-term,
+.carve-view :where(.language-carve, .language-crv) .token.definition-term .token.punctuation,
+.carve-view :where(.language-carve, .language-crv) .token.definition-list > .token.punctuation { color: var(--carve-syntax-definition); }
+.carve-view :where(.language-carve, .language-crv) .token.list.punctuation { color: var(--carve-syntax-list); font-weight: 700; }
+.carve-view :where(.language-carve, .language-crv) .token.list .token.constant { color: var(--carve-syntax-task); }
+.carve-view :where(.language-carve, .language-crv) .token.code-block > .token.punctuation { color: var(--carve-syntax-muted); }
+.carve-view :where(.language-carve, .language-crv) .token.code-block > .token.language { color: var(--carve-syntax-language); }
+.carve-view :where(.language-carve, .language-crv) .token.table-boundary { color: var(--carve-table-boundary); }
+.carve-view :where(.language-carve, .language-crv) .token.table-header { color: var(--carve-table-header); font-weight: 650; }
+.carve-view :where(.language-carve, .language-crv) .token.table-operator,
+.carve-view :where(.language-carve, .language-crv) .token.table-alignment { color: var(--carve-table-operator); font-weight: 650; }
+.carve-view :where(.language-carve, .language-crv) .token.table-span { color: var(--carve-table-span); font-weight: 650; }
+.carve-view :where(.language-carve, .language-crv) .token.table-continuation-marker { color: var(--carve-table-continuation); font-weight: 650; }
+
+.carve-source-editor .carve-tok-definition-term { color: var(--carve-syntax-definition); }
+.carve-source-editor .carve-tok-list { color: var(--carve-syntax-list); }
+.carve-source-editor .carve-tok-list.carve-tok-constant { color: var(--carve-syntax-task); }
+.carve-source-editor .carve-tok-code-block.carve-tok-language { color: var(--carve-syntax-language); }
+.carve-source-editor .carve-tok-code-block.carve-tok-punctuation { color: var(--carve-syntax-muted); }
+.carve-source-editor .carve-tok-table-header { color: var(--carve-table-header); font-weight: 650; }
+.carve-source-editor .carve-tok-table-operator, .carve-source-editor .carve-tok-table-alignment { color: var(--carve-table-operator); font-weight: 650; }
+.carve-source-editor .carve-tok-table-span { color: var(--carve-table-span); font-weight: 650; }
+.carve-source-editor .carve-tok-table-continuation-marker { color: var(--carve-table-continuation); font-weight: 650; }
+.carve-source-editor .carve-tok-table-boundary { color: var(--carve-table-boundary); }
+/* END generated Carve syntax palette */
