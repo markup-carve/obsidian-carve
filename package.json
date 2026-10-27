@@ -7,12 +7,14 @@
   "type": "module",
   "main": "main.js",
   "scripts": {
-    "build": "node esbuild.config.mjs production",
+    "build": "npm run syntax-palette:check && node esbuild.config.mjs production",
+    "syntax-palette:build": "node scripts/sync-syntax-palette.mjs",
+    "syntax-palette:check": "node scripts/sync-syntax-palette.mjs --check",
     "dev": "node esbuild.config.mjs",
     "test": "npm run build:test && node --test",
     "build:test": "esbuild src/metadata.ts src/render.ts src/includes.ts src/flatten.ts src/bundle.ts src/include-navigation.ts src/substitution.ts src/wysiwyg.ts src/visual-table.ts src/visual-editing.ts src/visual-history.ts src/live-preview.ts src/editor-commands.ts src/preview-hold.ts src/clipboard.ts src/highlight.ts src/syntax.ts src/offsets.ts src/fences.ts --platform=node --format=esm --outdir=dist-test",
     "typecheck": "tsc --noEmit",
-    "test:all": "npm test && npm run typecheck && npm run build"
+    "test:all": "npm run syntax-palette:check && npm test && npm run typecheck && npm run build"
   },
   "dependencies": {
     "@codemirror/commands": "6.10.2",
