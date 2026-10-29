@@ -101,3 +101,33 @@ test('progress and blocked task states have distinct outlines', () => {
     assert.match(css, new RegExp(`\\.carve-live-task-checkbox\\[data-task-state="${state}"\\] \\{ outline: 2px ${style}`))
   }
 })
+
+test('captions take the palette caption roles in Reading and Source', async () => {
+  const { default: Prism } = await import('prismjs')
+  const { withCarveGrammar } = await import('../dist-test/highlight.js')
+  const { carveTokenRanges } = await import('../dist-test/syntax.js')
+  const prism = await withCarveGrammar(Prism)
+  const source = '![a](b.png)\n^ Figure #: [l](u) *b*\n'
+  const window = new Window()
+  const style = window.document.createElement('style'); style.textContent = css; window.document.head.append(style)
+  window.document.body.className = 'theme-light'
+  window.document.body.innerHTML = `<div class="carve-view"><pre class="language-carve"><code class="language-carve">${prism.highlight(source, prism.languages.carve, 'carve')}</code></pre><div class="carve-source-editor"></div></div>`
+  const editor = window.document.querySelector('.carve-source-editor')
+  for (const range of carveTokenRanges(source, prism)) { const span = window.document.createElement('span'); span.className = range.className; span.textContent = source.slice(range.from, range.to); editor.append(span) }
+  const spans = Array.from(editor.children)
+  const span = (text) => spans.find((element) => element.textContent === text)
+  const reading = window.document.querySelector('.token.caption')
+  const views = [
+    { marker: reading.querySelector(':scope > .token.punctuation'), text: reading, bracket: reading.querySelector('.token.url .token.punctuation') },
+    { marker: span('^'), text: spans.find((element) => element.textContent.includes('Figure')), bracket: span('['), bold: span('*b*') },
+  ]
+  for (const { marker, text, bracket, bold } of views) {
+    const styleOf = (element) => window.getComputedStyle(element)
+    assert.equal(styleOf(marker).color, '#bc4c00')
+    assert.match(styleOf(marker).fontWeight, /^(700|bold)$/)
+    assert.equal(styleOf(text).color, '#57606a')
+    assert.equal(styleOf(text).fontStyle, 'italic')
+    assert.notEqual(styleOf(bracket).color, '#bc4c00')
+    if (bold) assert.match(styleOf(bold).fontWeight, /^(700|bold)$/)
+  }
+})
