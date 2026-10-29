@@ -28,9 +28,10 @@ export async function withCarveGrammar<P extends Prism>(prism: P): Promise<P> {
 }
 
 /**
- * Highlight every language fence under `root`. A `{.diff}` fence gets the
- * add/remove line presentation with each line highlighted on its own; without
- * `prism`, or for a language it has no grammar for, code stays plain.
+ * Highlight every language fence under `root`. A `{.diff}` fence (the class on
+ * the `<pre>`, or on its `<figure>` when captioned) gets the add/remove line
+ * presentation with each line highlighted on its own; without `prism`, or for a
+ * language it has no grammar for, code stays plain.
  */
 export function highlightCodeBlocks(root: ParentNode, prism: Prism | null): void {
   for (const code of Array.from(root.querySelectorAll<HTMLElement>('pre > code[class*="language-"]'))) {
@@ -38,10 +39,15 @@ export function highlightCodeBlocks(root: ParentNode, prism: Prism | null): void
     const language = /(?:^|\s)language-(\S+)/.exec(code.className)?.[1]?.toLowerCase() ?? ''
     const grammar = prism ? grammarOf(prism, language) : undefined
     const highlight = prism && grammar ? (text: string) => prism.highlight(text, grammar, language) : undefined
-    if (pre?.classList.contains('diff')) applyLanguageDiff(code, highlight)
+    if (pre && isDiffFence(pre)) applyLanguageDiff(code, highlight)
     else if (highlight) code.innerHTML = highlight(code.textContent ?? '')
     if (highlight) pre?.classList.add(`language-${language}`)
   }
+}
+
+function isDiffFence(pre: HTMLElement): boolean {
+  const parent = pre.parentElement
+  return pre.classList.contains('diff') || (parent?.tagName === 'FIGURE' && parent.classList.contains('diff'))
 }
 
 // `Prism.languages` also carries helpers such as `extend` and `insertBefore`.

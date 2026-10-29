@@ -44,6 +44,25 @@ test('a {.diff} fence keeps its line presentation and gains language tokens', as
   assert.equal(root.querySelector('.line.diff.add .token.number').textContent, '2')
 })
 
+test('a captioned {.diff} fence, whose class sits on the figure, gets the line presentation', async () => {
+  const root = await rendered('{#lst-a .diff}\n```js\n- const old = 1\n+ const fresh = 2\n```\n^ Listing #: x\n')
+  const pre = root.querySelector('figure.diff > pre')
+  assert.equal(pre.classList.contains('has-diff'), true)
+  assert.equal(pre.querySelector('.line.diff.remove .token.keyword').textContent, 'const')
+  assert.equal(pre.querySelector('.line.diff.add .diff-marker').textContent, '+')
+})
+
+test('only a whole diff class on the pre or its figure marks a diff fence', () => {
+  const document = new Window().document
+  const root = document.createElement('article')
+  root.innerHTML = '<figure class="diffs"><pre><code class="language-js">+ a\n</code></pre></figure>'
+    + '<pre class="side-diff"><code class="language-js">+ b\n</code></pre>'
+    + '<div class="diff"><pre><code class="language-js">+ c\n</code></pre></div>'
+  highlightCodeBlocks(root, null)
+  assert.equal(root.querySelector('.has-diff'), null)
+  assert.equal(root.querySelector('.line'), null)
+})
+
 test('a fence in an unknown language stays plain, and a diff of it still gets lines', async () => {
   const root = await rendered('```nosuchlang\nx < y\n```\n\n{.diff}\n```nosuchlang\n- a < b\n```\n')
   const [plain, diff] = root.querySelectorAll('pre')

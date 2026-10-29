@@ -303,6 +303,8 @@
   --carve-syntax-task: #1a7f37;
   --carve-syntax-language: #0969da;
   --carve-syntax-muted: #57606a;
+  --carve-syntax-caption-marker: #bc4c00;
+  --carve-syntax-caption-text: #57606a;
   --carve-table-boundary: #959da5;
   --carve-table-header: #005cc5;
   --carve-table-operator: #e36209;
@@ -318,6 +320,8 @@
   --carve-syntax-task: #3fb950;
   --carve-syntax-language: #79c0ff;
   --carve-syntax-muted: #8b949e;
+  --carve-syntax-caption-marker: #ffab70;
+  --carve-syntax-caption-text: #8b949e;
   --carve-table-boundary: #6a737d;
   --carve-table-header: #79b8ff;
   --carve-table-operator: #ffab70;
@@ -338,6 +342,8 @@
 .carve-view :where(.language-carve, .language-crv) .token.table-alignment { color: var(--carve-table-operator); font-weight: 650; }
 .carve-view :where(.language-carve, .language-crv) .token.table-span { color: var(--carve-table-span); font-weight: 650; }
 .carve-view :where(.language-carve, .language-crv) .token.table-continuation-marker { color: var(--carve-table-continuation); font-weight: 650; }
+.carve-view :where(.language-carve, .language-crv) .token.caption { color: var(--carve-syntax-caption-text); font-style: italic; }
+.carve-view :where(.language-carve, .language-crv) .token.caption > .token.punctuation { color: var(--carve-syntax-caption-marker); font-weight: 700; font-style: normal; }
 
 .carve-source-editor .carve-tok-definition-term { color: var(--carve-syntax-definition); }
 .carve-source-editor .carve-tok-list { color: var(--carve-syntax-list); }
@@ -349,4 +355,7 @@
 .carve-source-editor .carve-tok-table-span { color: var(--carve-table-span); font-weight: 650; }
 .carve-source-editor .carve-tok-table-continuation-marker { color: var(--carve-table-continuation); font-weight: 650; }
 .carve-source-editor .carve-tok-table-boundary { color: var(--carve-table-boundary); }
+.carve-source-editor .carve-tok-caption { color: var(--carve-syntax-caption-text); font-style: italic; }
+.carve-source-editor .carve-tok-caption:not(.carve-tok-bold) { font-weight: normal; }
+.carve-source-editor .carve-tok-caption:is([class="carve-tok-caption carve-tok-punctuation"], [class="carve-tok-caption carve-tok-title carve-tok-punctuation"]) { color: var(--carve-syntax-caption-marker); font-weight: 700; font-style: normal; }
 /* END generated Carve syntax palette */
