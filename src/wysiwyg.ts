@@ -1,4 +1,5 @@
-import { carveToAstJson, createEditorSession, htmlToCarve } from '@markup-carve/carve'
+import { carveToAstJson, createEditorSession, htmlToCarve, parse } from '@markup-carve/carve'
+import { codepointToUtf16 } from './offsets.js'
 import { renderCarve } from './render.js'
 import { substitutionHalves } from './substitution.js'
 
@@ -147,14 +148,13 @@ function semanticJson(source: string): string | null {
 }
 
 function splitFrontmatter(source: string): { frontmatter: string; body: string } {
-  const opening = source.match(/^(---(?:yaml|toml|json)?\r?\n)/)
-  if (!opening) return { frontmatter: '', body: source }
-  const closing = /(?:^|\n)---(?:\r?\n|$)/g
-  closing.lastIndex = opening[0].length
-  const match = closing.exec(source)
-  if (!match) return { frontmatter: '', body: source }
-  const end = match.index + match[0].length
-  return { frontmatter: source.slice(0, end), body: source.slice(end) }
+  // The engine decides which openers and closers count, so the split matches the reading view.
+  if (!source.startsWith('---')) return { frontmatter: '', body: source }
+  const end = parse(source, { positions: true }).frontmatter?.pos?.endOffset
+  if (end === undefined) return { frontmatter: '', body: source }
+  const at = codepointToUtf16(source)(end)
+  const split = at + (/^\r?\n/.exec(source.slice(at))?.[0].length ?? 0)
+  return { frontmatter: source.slice(0, split), body: source.slice(split) }
 }
 
 function diagnosticMessages(report: unknown): string[] {
