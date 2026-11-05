@@ -20,13 +20,28 @@ function classesAt(source, needle, nth = 0) {
 const has = (source, needle, token, nth = 0) => assert.match(classesAt(source, needle, nth), new RegExp(`carve-tok-${token}(?: |$)`), `${JSON.stringify(needle)} in ${JSON.stringify(source)} is not ${token}`)
 const lacks = (source, needle, token, nth = 0) => assert.doesNotMatch(classesAt(source, needle, nth), new RegExp(`carve-tok-${token}(?: |$)`), `${JSON.stringify(needle)} in ${JSON.stringify(source)} is ${token}`)
 
-test('only a closed block on the first line is front matter; a later --- is a thematic break', () => {
+test('a first-line --- opens front matter; a later --- is a thematic break', () => {
   const source = '---\ntitle: x\n---\n\nIntro\n\n---\n\nafter the break\n'
   has(source, 'title', 'front-matter')
   lacks(source, 'after the break', 'front-matter')
   lacks(source, 'after the break', 'property')
   has(source, '---', 'thematic-break', 2)
   lacks('Intro\n\n---\n\nafter\n', 'after', 'front-matter')
+})
+
+test('a first-line --- without a closer is front matter to the end (markup-carve/carve#5016)', () => {
+  const source = '---\ntitle: x\n\nBody\n'
+  has(source, 'title', 'front-matter')
+  has(source, 'Body', 'front-matter')
+  lacks(source, '---', 'thematic-break')
+})
+
+test('braced cell alignment is table alignment (markup-carve/carve#5091)', () => {
+  const source = '|={>} Qty |={~} Name |\n|{> .num} 12 | x |\n'
+  has(source, '>', 'table-alignment')
+  has(source, '~', 'table-alignment')
+  has(source, '>', 'table-alignment', 1)
+  has(source, '.num', 'class-name')
 })
 
 test('a shorter fence does not close a longer one', () => {
