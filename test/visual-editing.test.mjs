@@ -440,6 +440,22 @@ test('ArrowLeft from a task stops at an empty task or the parent item above', ()
   assert.equal(node.textContent.slice(0, offset).trim().endsWith('parent'), true)
 })
 
+test('ArrowLeft from a task lands inside the paragraph of a loose item above', () => {
+  for (const [source, index, expected] of [
+    ['- [ ] parent\n\n  more\n\n  - [ ] child\n', 1, 'more'],
+    ['- [ ] a\n\n- [ ] b\n', 1, 'a'],
+    ['- [ ] a\n\n- [ ] parent\n  - [ ] child\n', 2, 'parent'],
+  ]) {
+    const surface = taskSurface(source)
+    const item = surface.querySelectorAll('li')[index]
+    assert.equal(visualTaskCaretKey(surface, 'ArrowLeft', caretAt(item, 1)), true, source)
+    const [node, offset] = caret()
+    assert.equal(node.nodeType, 3, source)
+    assert.equal(node.parentElement.tagName, 'P', source)
+    assert.equal(node.textContent.slice(0, offset).trim().endsWith(expected), true, source)
+  }
+})
+
 test('typing extended task states in a visual list preserves the state', () => {
   for (const state of ['/', '!', '_']) {
     const surface = document.createElement('article')
