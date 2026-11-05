@@ -153,7 +153,7 @@ function splitFrontmatter(source: string): { frontmatter: string; body: string }
   const end = parse(source, { positions: true }).frontmatter?.pos?.endOffset
   if (end === undefined) return { frontmatter: '', body: source }
   const at = codepointToUtf16(source)(end)
-  const split = at + (/^\r?\n/.exec(source.slice(at))?.[0].length ?? 0)
+  const split = at + (/^(?:\r\n?|\n)/.exec(source.slice(at))?.[0].length ?? 0)
   return { frontmatter: source.slice(0, split), body: source.slice(split) }
 }
 

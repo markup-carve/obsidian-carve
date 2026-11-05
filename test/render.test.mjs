@@ -59,6 +59,7 @@ test('visual editing keeps every frontmatter opener the engine accepts out of th
     ['--- toml\ntitle = "Spaced"\n---\n# Hello\n', '--- toml\ntitle = "Spaced"\n---\n'],
     ['---json5\n{title: "Other"}\n---\n# Hello\n', '---json5\n{title: "Other"}\n---\n'],
     ['---\ntitle: "😀 ä"\n---\n# Hello\n', '---\ntitle: "😀 ä"\n---\n'],
+    ['---\rtitle: x\r---\r# Hello\n', '---\rtitle: x\r---\r'],
   ]) {
     const visual = sourceToVisualDocument(source)
     assert.equal(visual.frontmatter, frontmatter, source)
