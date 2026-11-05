@@ -305,11 +305,13 @@ function itemToParagraph(item: HTMLLIElement, list: HTMLElement): HTMLParagraphE
 }
 
 /** Where a caret at the end of an item's own content goes (before its nested list). */
-function itemContentEnd(item: HTMLLIElement): { node: Node; offset: number } {
-  const nested = directList(item)
+function itemContentEnd(item: HTMLElement): { node: Node; offset: number } {
+  const nested = item instanceof HTMLLIElement ? directList(item) : null
   let index = nested ? Array.prototype.indexOf.call(item.childNodes, nested) : item.childNodes.length
   while (index > 0 && (item.childNodes[index - 1]!.nodeName === 'BR' || blankText(item.childNodes[index - 1]!))) index--
   const previous = item.childNodes[index - 1]
+  // A loose item holds its text in paragraphs; the caret belongs inside the last one.
+  if (previous?.nodeName === 'P') return itemContentEnd(previous as HTMLElement)
   return previous?.nodeType === 3 ? { node: previous, offset: (previous.textContent ?? '').length } : { node: item, offset: index }
 }
 
