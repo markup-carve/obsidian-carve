@@ -54,6 +54,28 @@ test('visual editing preserves frontmatter bytes outside the editable surface', 
   assert.equal(visualHtmlToSource(visual.html, visual.frontmatter).source, source)
 })
 
+test('visual editing keeps every frontmatter opener the engine accepts out of the body', () => {
+  for (const [source, frontmatter] of [
+    ['--- toml\ntitle = "Spaced"\n---\n# Hello\n', '--- toml\ntitle = "Spaced"\n---\n'],
+    ['---json5\n{title: "Other"}\n---\n# Hello\n', '---json5\n{title: "Other"}\n---\n'],
+    ['---\ntitle: "😀 ä"\n---\n# Hello\n', '---\ntitle: "😀 ä"\n---\n'],
+    ['---\rtitle: x\r---\r# Hello\n', '---\rtitle: x\r---\r'],
+  ]) {
+    const visual = sourceToVisualDocument(source)
+    assert.equal(visual.frontmatter, frontmatter, source)
+    assert.doesNotMatch(visual.html, /<hr/, source)
+    assert.equal(visualHtmlToSource(visual.html, visual.frontmatter).source, source)
+  }
+})
+
+test('visual editing takes a closer at the end of the file into the frontmatter', () => {
+  assert.equal(sourceToVisualDocument('---\ntitle: x\n---').frontmatter, '---\ntitle: x\n---')
+})
+
+test('visual editing leaves a document without frontmatter whole', () => {
+  for (const source of ['***\n\nText\n', '--- not a token\n\nText\n']) assert.equal(sourceToVisualDocument(source).frontmatter, '', source)
+})
+
 test('visual table caret placeholders never enter Carve source', () => {
   // The placeholder element is editor chrome; the empty table row is content.
   const edited = visualHtmlToSource('<table><tr><th>A</th></tr><tr><td><br data-carve-placeholder=""></td></tr></table>')
