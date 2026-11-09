@@ -90,16 +90,20 @@ jobs:
             exit 1
           fi
 
+      # main may pin a merged upstream commit between releases to adopt
+      # engine work early. A release builds from published engines, so the
+      # pin is re-pointed at the cut and this refuses a run that still has one.
+      - name: No dependency is installed over git
+        run: node scripts/no-git-dependencies.mjs
+
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
-      # The lockfile carries no git dependency any more: #37 moved the last
-      # one, carve-grammars, onto a registry tarball. This stays as a net for
-      # the next one, because a git+ssh entry installs on a runner only
-      # through npm's own fallback to HTTPS, and a release must not rest on
-      # that. Both lines write the SAME config key, so both need --add:
+      # A release carries no git dependency (the guard job refuses one), but
+      # main may, and a git+ssh entry installs on a runner only through npm's
+      # own fallback to HTTPS, which a release must not rest on. Both lines write the SAME config key, so both need --add:
       # a plain set would replace the first rewrite with the second and leave
       # the ssh:// form uncovered.
       - name: Prefer HTTPS for Git dependencies
@@ -137,11 +141,9 @@ jobs:
           node-version: 22
           cache: npm
 
-      # The lockfile carries no git dependency any more: #37 moved the last
-      # one, carve-grammars, onto a registry tarball. This stays as a net for
-      # the next one, because a git+ssh entry installs on a runner only
-      # through npm's own fallback to HTTPS, and a release must not rest on
-      # that. Both lines write the SAME config key, so both need --add:
+      # A release carries no git dependency (the guard job refuses one), but
+      # main may, and a git+ssh entry installs on a runner only through npm's
+      # own fallback to HTTPS, which a release must not rest on. Both lines write the SAME config key, so both need --add:
       # a plain set would replace the first rewrite with the second and leave
       # the ssh:// form uncovered.
       - name: Prefer HTTPS for Git dependencies
