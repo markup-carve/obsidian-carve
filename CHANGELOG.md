@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.7
+
+The plugin follows the Carve 0.1.14 wave through carve-js 0.1.16, carve-grammars and carve-lsp, and the visual editor keeps every frontmatter opener the engine accepts.
+
+### Fixes
+
+- Visual mode takes the frontmatter split from the engine, so openers such as `--- toml` or `---json5` and an unclosed opener stay out of the body, and a lone CR after the closer survives the round trip (#99).
+- ArrowLeft into a loose task item lands in its paragraph instead of between the paragraph and a nested list (#100).
+- Captioned `{.diff}` fences render as diffs in the reading view, and captions take their colors (#97).
+
+### Improvements
+
+- Carve syntax colors match across themes (#96).
+- The engine, grammar and language server follow the Carve 0.1.14 readings: two spaces after a letter or roman dot marker, frontmatter without a closer, and braced cell alignment (`|={>}`) (#101).
+
+**Full Changelog**: https://github.com/markup-carve/obsidian-carve/compare/0.1.6...0.1.7
+
 ## 0.1.6
 
 Progress and blocked tasks keep their state while editing, and source highlighting follows the current grammar scopes.
