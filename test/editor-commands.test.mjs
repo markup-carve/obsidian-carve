@@ -65,6 +65,11 @@ test('line prefixes toggle without changing line content', () => {
   assert.equal(apply('human', linePrefixEdit('human', 0, 5, 'quote').changes), '> human')
   assert.equal(apply('human', linePrefixEdit('human', 0, 5, 'ordered').changes), '1. human')
   assert.equal(apply('1. human', linePrefixEdit('1. human', 0, 8, 'ordered').changes), 'human')
+  assert.equal(apply('a.  human', linePrefixEdit('a.  human', 0, 9, 'ordered').changes), 'human')
+  assert.equal(apply('ii) human', linePrefixEdit('ii) human', 0, 9, 'ordered').changes), 'human')
+  // One space after a letter or roman dot marker is paragraph text (markup-carve/carve#4828).
+  assert.equal(apply('a. human', linePrefixEdit('a. human', 0, 8, 'ordered').changes), '1. a. human')
+  assert.equal(apply('ii. human', linePrefixEdit('ii. human', 0, 9, 'ordered').changes), '1. ii. human')
 })
 
 test('code fences wrap only the selected source', () => {
@@ -101,8 +106,8 @@ const indentCases = [
   ['ten-wide parent needs four columns', '10. a\n11. b', 1, false, '10. a\n    1. b', 2],
   ['first child restarts at 1', '1. a\n2. b', 1, false, '1. a\n   1. b', 2],
   ['joining a child list takes the next ordinal', '1. a\n   1. x\n2. b', 2, false, '1. a\n   1. x\n   2. b', 2],
-  ['alpha first child restarts at a', 'a. x\nb. y', 1, false, 'a. x\n   a. y', 2],
-  ['roman first child restarts at i', 'i. x\nii. y', 1, false, 'i. x\n   i. y', 2],
+  ['alpha first child restarts at a', 'a.  x\nb.  y', 1, false, 'a.  x\n    a.  y', 2],
+  ['roman first child restarts at i', 'i.  x\nii.  y', 1, false, 'i.  x\n    i.  y', 2],
   ['paren delimiter is kept', '1) a\n2) b', 1, false, '1) a\n   1) b', 2],
   ['bare-dot marker stays a bare dot', '. a\n. b', 1, false, '. a\n  . b', 2],
   ['nested list after a different marker kind', '- a\n  1. b\n  - c', 2, false, '- a\n  1. b\n     - c', 3],
@@ -155,7 +160,9 @@ test('source Enter continues bullets, numbering, and task state', () => {
   assert.equal(apply('9. item', listContinuationEdit('9. item', 0, 7, 7).changes), '9. item\n10. ')
   assert.equal(apply('- [x] done', listContinuationEdit('- [x] done', 0, 10, 10).changes), '- [x] done\n- [ ] ')
   assert.equal(apply('- [>] later', listContinuationEdit('- [>] later', 0, 11, 11).changes), '- [>] later\n- [ ] ')
-  assert.equal(apply('a. x', listContinuationEdit('a. x', 0, 4, 4).changes), 'a. x\nb. ')
+  assert.equal(apply('a.  x', listContinuationEdit('a.  x', 0, 5, 5).changes), 'a.  x\nb.  ')
+  // One space after a letter or roman dot marker is paragraph text (markup-carve/carve#4828).
+  assert.equal(listContinuationEdit('a. x', 0, 4, 4), null)
   assert.equal(apply('iv) x', listContinuationEdit('iv) x', 0, 5, 5).changes), 'iv) x\nv)  ')
   assert.equal(apply('. x', listContinuationEdit('. x', 0, 3, 3).changes), '. x\n. ')
   // carve-lsp ends a list from an empty item and leaves the caret on the next line.
