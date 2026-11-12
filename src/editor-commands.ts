@@ -96,7 +96,7 @@ export function simpleTableEdit(source: string, at: number, direction: TableDire
 export type LinePrefix = 'bullet' | 'ordered' | 'task' | 'quote'
 export function linePrefixEdit(source: string, lineFrom: number, lineTo: number, kind: LinePrefix): FormatEdit {
   const line = source.slice(lineFrom, lineTo)
-  const prefixes: Record<LinePrefix, RegExp> = { bullet: /^[-*] [ \t]*/, ordered: /^(?:\.|(?:[0-9]+|[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+)[.)]) [ \t]*/, task: /^[-*] [ \t]*\[[ xX_>?/!-]\] [ \t]*/, quote: /^>[ \t]+/ }
+  const prefixes: Record<LinePrefix, RegExp> = { bullet: /^[-*] [ \t]*/, ordered: /^(?:(?:\.|[0-9]+[.)]|(?:[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+)\)) |(?:[A-Za-z]|[ivxlcdm]+|[IVXLCDM]+)\.  )[ \t]*/, task: /^[-*] [ \t]*\[[ xX_>?/!-]\] [ \t]*/, quote: /^>[ \t]+/ }
   const insertions: Record<LinePrefix, string> = { bullet: '- ', ordered: '1. ', task: '- [ ] ', quote: '> ' }
   const own = prefixes[kind].exec(line)?.[0] ?? ''
   const any = /^(?:[-*] [ \t]*(?:\[[ xX_>?/!-]\] [ \t]*)?|>[ \t]+)/.exec(line)?.[0] ?? ''

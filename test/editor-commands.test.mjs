@@ -65,6 +65,11 @@ test('line prefixes toggle without changing line content', () => {
   assert.equal(apply('human', linePrefixEdit('human', 0, 5, 'quote').changes), '> human')
   assert.equal(apply('human', linePrefixEdit('human', 0, 5, 'ordered').changes), '1. human')
   assert.equal(apply('1. human', linePrefixEdit('1. human', 0, 8, 'ordered').changes), 'human')
+  assert.equal(apply('a.  human', linePrefixEdit('a.  human', 0, 9, 'ordered').changes), 'human')
+  assert.equal(apply('ii) human', linePrefixEdit('ii) human', 0, 9, 'ordered').changes), 'human')
+  // One space after a letter or roman dot marker is paragraph text (markup-carve/carve#4828).
+  assert.equal(apply('a. human', linePrefixEdit('a. human', 0, 8, 'ordered').changes), '1. a. human')
+  assert.equal(apply('ii. human', linePrefixEdit('ii. human', 0, 9, 'ordered').changes), '1. ii. human')
 })
 
 test('code fences wrap only the selected source', () => {
