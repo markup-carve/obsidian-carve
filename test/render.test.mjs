@@ -76,6 +76,14 @@ test('visual editing leaves a document without frontmatter whole', () => {
   for (const source of ['***\n\nText\n', '--- not a token\n\nText\n']) assert.equal(sourceToVisualDocument(source).frontmatter, '', source)
 })
 
+test('visual editing keeps an unclosed first-line frontmatter out of the editable body (markup-carve/carve#5016)', () => {
+  const source = '---\ntitle: x\n\nBody\n'
+  const visual = sourceToVisualDocument(source)
+  assert.equal(visual.frontmatter, source)
+  assert.equal(visual.body, '')
+  assert.doesNotMatch(visual.html, /<hr/)
+})
+
 test('visual table caret placeholders never enter Carve source', () => {
   // The placeholder element is editor chrome; the empty table row is content.
   const edited = visualHtmlToSource('<table><tr><th>A</th></tr><tr><td><br data-carve-placeholder=""></td></tr></table>')
