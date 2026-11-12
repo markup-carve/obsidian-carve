@@ -2,7 +2,7 @@
 
 ## 0.1.7
 
-The plugin follows the Carve 0.1.14 wave through carve-js 0.1.16, carve-grammars and carve-lsp, and the visual editor keeps every frontmatter opener the engine accepts.
+The plugin follows the Carve 0.1.14 wave through carve-js 0.1.16, carve-grammars 0.1.23 and carve-lsp 0.1.16, and the visual editor keeps every frontmatter opener the engine accepts.
 
 ### Fixes
 
@@ -14,7 +14,7 @@ The plugin follows the Carve 0.1.14 wave through carve-js 0.1.16, carve-grammars
 ### Improvements
 
 - Carve syntax colors match across themes (#96).
-- The engine, grammar and language server follow the Carve 0.1.14 readings: two spaces after a letter or roman dot marker, frontmatter without a closer, and braced cell alignment (`|={>}`). The engine moves to carve-js 0.1.16 (#101, #103).
+- The engine, grammar and language server follow the Carve 0.1.14 readings: two spaces after a letter or roman dot marker, frontmatter without a closer, and braced cell alignment (`|={>}`). The engine moves to carve-js 0.1.16, the grammars to carve-grammars 0.1.23 and the language server to carve-lsp 0.1.16 (#101, #103).
 
 **Full Changelog**: https://github.com/markup-carve/obsidian-carve/compare/0.1.6...0.1.7
 
