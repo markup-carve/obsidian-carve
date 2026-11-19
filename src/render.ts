@@ -1,11 +1,11 @@
-import { carveToHtml, parse, type Document } from '@markup-carve/carve'
-import { codepointToUtf16 } from './offsets.js'
+import { parse, render, type DocumentNode } from '@markup-carve/carve'
+import { byteToUtf16 } from './engine.js'
 
 /** Raw HTML is deliberately disabled for vault content by default. */
-export const RENDER_OPTIONS = { allowRawHtml: false } as const
+export const RENDER_OPTIONS = { rawHtml: false } as const
 
 export function renderCarve(source: string): string {
-  return carveToHtml(rewriteWikiSyntax(source), RENDER_OPTIONS)
+  return render(rewriteWikiSyntax(source), RENDER_OPTIONS)
 }
 
 const WIKILINK = /(!?)\[\[([^\]|#]+)(#[^\]|]+)?(?:\|([^\]]+))?\]\]/g
@@ -36,6 +36,13 @@ function collectSpans(node: unknown, toUtf16: (offset: number) => number, text: 
   }
 }
 
+// A 0.2 tree folds a backslash escape into its text node, so `\\[[B]]` is checked in the source.
+function escaped(source: string, at: number): boolean {
+  let slashes = 0
+  while (at - slashes - 1 >= 0 && source[at - slashes - 1] === '\\') slashes++
+  return slashes % 2 === 1
+}
+
 /**
  * Every wikilink in `source` that the engine reads as plain text.
  *
@@ -45,10 +52,10 @@ function collectSpans(node: unknown, toUtf16: (offset: number) => number, text: 
  * link destination, front matter or after a backslash escape stays literal.
  * Pass `document` when it is already parsed with positions.
  */
-export function wikilinkMatches(source: string, document?: Document): WikiMatch[] {
+export function wikilinkMatches(source: string, document?: DocumentNode): WikiMatch[] {
   if (!source.includes('[[')) return []
   const tree = document ?? parse(source, { positions: true })
-  const toUtf16 = codepointToUtf16(source)
+  const toUtf16 = byteToUtf16(source)
   const text: Span[] = []
   const verbatim: Span[] = []
   collectSpans(tree.children, toUtf16, text, verbatim)
@@ -65,7 +72,7 @@ export function wikilinkMatches(source: string, document?: Document): WikiMatch[
     const inText = t < text.length && (text[t] as Span).from <= start
     let touchesVerbatim = false
     for (let index = v; index < verbatim.length && (verbatim[index] as Span).from < end; index++) if ((verbatim[index] as Span).to > start) { touchesVerbatim = true; break }
-    if (!inText || touchesVerbatim) continue
+    if (!inText || touchesVerbatim || escaped(source, start)) continue
     matches.push({ start, end, embed: match[1] === '!', target: match[2] as string, fragment: match[3] ?? '', alias: match[4] ?? '' })
   }
   return matches

@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { carveToHtml } from '@markup-carve/carve'
+import { render as carveToHtml } from '@markup-carve/carve'
 import { extractMetadata, withCrvExtension } from '../dist-test/metadata.js'
 import { renderCarve, rewriteWikiSyntax, safeDecodeURIComponent } from '../dist-test/render.js'
 import { appendOpaqueConstruct, editOpaqueWithPrompts, normalizeVisualHtml, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from '../dist-test/wysiwyg.js'
 
 test('the renderer produces Obsidian-ready HTML', () => {
-  const html = carveToHtml('# Human markup\n\nA *strong* idea and [link](https://example.com).', { allowRawHtml: false })
+  const html = carveToHtml('# Human markup\n\nA *strong* idea and [link](https://example.com).', { rawHtml: false })
   assert.match(html, /<h1[^>]*>Human markup<\/h1>/)
   assert.match(html, /<strong>strong<\/strong>/)
   assert.match(html, /href="https:\/\/example.com"/)
@@ -39,16 +39,24 @@ test('TOML, JSON, and malformed properties stay inspectable', () => {
   assert.equal(extractMetadata('---json\n{broken\n---\n').properties.parseError, true)
 })
 
+// The 0.2 writer spells a heading with `=` (C2-W-035), so the canonical fixtures below use it.
 test('visual editing round-trips common blocks and formatting', () => {
-  const visual = sourceToVisualDocument('# Hello\n\nA *strong* idea.\n\n- one\n- two\n')
+  const visual = sourceToVisualDocument('= Hello\n\nA *strong* idea.\n\n- one\n- two\n')
   assert.equal(visual.canonicalizes, false)
   const edited = visualHtmlToSource(visual.html.replace('>strong<', '>clear<'), visual.frontmatter)
   assert.match(edited.source, /A \*clear\* idea\./)
   assert.match(edited.source, /- one\n- two/)
 })
 
+test('a `#` heading canonicalizes to `=` without semantic loss (C2-W-035)', () => {
+  const visual = sourceToVisualDocument('{#id .wide}\n# Hello\n\nText\n')
+  assert.equal(visual.semanticLoss, false)
+  assert.equal(visual.canonicalizes, true)
+  assert.equal(visual.canonicalBody, '{#id .wide}\n= Hello\n\nText\n')
+})
+
 test('visual editing preserves frontmatter bytes outside the editable surface', () => {
-  const source = '---toml\r\ntitle = "Human"\r\n---\r\n# Hello\n'
+  const source = '---toml\r\ntitle = "Human"\r\n---\r\n= Hello\n'
   const visual = sourceToVisualDocument(source)
   assert.equal(visual.frontmatter, '---toml\r\ntitle = "Human"\r\n---\r\n')
   assert.equal(visualHtmlToSource(visual.html, visual.frontmatter).source, source)
@@ -56,16 +64,19 @@ test('visual editing preserves frontmatter bytes outside the editable surface', 
 
 test('visual editing keeps every frontmatter opener the engine accepts out of the body', () => {
   for (const [source, frontmatter] of [
-    ['--- toml\ntitle = "Spaced"\n---\n# Hello\n', '--- toml\ntitle = "Spaced"\n---\n'],
-    ['---json5\n{title: "Other"}\n---\n# Hello\n', '---json5\n{title: "Other"}\n---\n'],
-    ['---\ntitle: "😀 ä"\n---\n# Hello\n', '---\ntitle: "😀 ä"\n---\n'],
-    ['---\rtitle: x\r---\r# Hello\n', '---\rtitle: x\r---\r'],
+    ['--- toml\ntitle = "Spaced"\n---\n= Hello\n', '--- toml\ntitle = "Spaced"\n---\n'],
+    ['---json5\n{title: "Other"}\n---\n= Hello\n', '---json5\n{title: "Other"}\n---\n'],
+    ['---\ntitle: "😀 ä"\n---\n= Hello\n', '---\ntitle: "😀 ä"\n---\n'],
   ]) {
     const visual = sourceToVisualDocument(source)
     assert.equal(visual.frontmatter, frontmatter, source)
     assert.doesNotMatch(visual.html, /<hr/, source)
     assert.equal(visualHtmlToSource(visual.html, visual.frontmatter).source, source)
   }
+})
+
+test('a lone CR ends no line, so CR-only front matter is body text (C2-B-010)', () => {
+  assert.equal(sourceToVisualDocument('---\rtitle: x\r---\r= Hello\n').frontmatter, '')
 })
 
 test('visual editing takes a closer at the end of the file into the frontmatter', () => {
@@ -88,7 +99,8 @@ test('visual table caret placeholders never enter Carve source', () => {
   // The placeholder element is editor chrome; the empty table row is content.
   const edited = visualHtmlToSource('<table><tr><th>A</th></tr><tr><td><br data-carve-placeholder=""></td></tr></table>')
   assert.doesNotMatch(edited.source, /\\\n|placeholder/)
-  assert.equal(edited.source, '|= A |\n| |\n')
+  // Rows directly in <table> form one body, so a <th> row is a body header row (C2-M-037).
+  assert.equal(edited.source, '{body-rows=1 body-header-rows=1}\n| A |\n| |\n')
   assert.deepEqual(edited.diagnostics, [])
 })
 
@@ -107,7 +119,8 @@ test('visual table selection state never enters Carve source', () => {
 
 test('visual table alignment survives import as Carve cell semantics', () => {
   const result = visualHtmlToSource('<table><tbody><tr><td align="center">A</td><td>B</td></tr><tr><td align="center">C</td><td>D</td></tr></tbody></table>')
-  assert.equal(result.source, '|{align=center} A | B |\n|{align=center} C | D |\n')
+  // A column whose cells all show one alignment gives it to the column (C2-M-040).
+  assert.equal(result.source, '{aligns=center}\n| A | B |\n| C | D |\n')
   assert.deepEqual(result.diagnostics, [])
 })
 
@@ -130,7 +143,7 @@ test('visual safety audit keeps the complete Carve element surface lossless', ()
   const protectedIslands = {
     admonition: '::: note "Title"\nbody\n:::\n',
     div: '::: custom\nbody\n:::\n', lineBlock: '::: |\nline one\n line two\n:::\n',
-    footnote: 'Text[^a]\n\n[^a]: note\n', inlineFootnote: 'Text^[note]\n', attributes: '{#id .wide}\n# Heading\n',
+    footnote: 'Text[^a]\n\n[^a]: note\n', inlineFootnote: 'Text^[note]\n', attributes: '{#id .wide}\n= Heading\n',
     abbreviation: '*[HTML]: HyperText Markup Language\n\nHTML\n',
     comments: 'before {% hidden %} after\n\n%% hidden\n', criticMarkup: '{+inserted+} {-deleted-} {~old~>new~} {#comment#}\n',
     raw: '`<b>x</b>`{=html}\n', wikilink: '[[Note|label]]\n', embed: '![[Note]]\n', tagMention: '#tag @user\n',
@@ -170,7 +183,7 @@ test('new advanced constructs can be inserted into a visual document losslessly'
 })
 
 test('renderer-owned heading sections do not create visual import warnings', () => {
-  const visual = sourceToVisualDocument('# Heading\n\nParagraph.\n')
+  const visual = sourceToVisualDocument('= Heading\n\nParagraph.\n')
   assert.deepEqual(visual.diagnostics, [])
   assert.equal(visual.canonicalizes, false)
 })
@@ -219,7 +232,8 @@ test('wiki syntax inside code, comments, math and after an escape stays literal'
 })
 
 test('a wikilink followed by attributes keeps them', () => {
-  assert.match(renderCarve('x [[A]]{#id} y\n'), /<a href="A" class="carve-wikilink" id="id">A<\/a>/)
+  // The id is written before the class in 0.2 (C2-H-009).
+  assert.match(renderCarve('x [[A]]{#id} y\n'), /<a href="A" id="id" class="carve-wikilink">A<\/a>/)
   assert.deepEqual(extractMetadata('x [[A]]{#id} y\n').links.map(({ target }) => target), ['A'])
 })
 
