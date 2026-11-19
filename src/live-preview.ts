@@ -1,4 +1,4 @@
-import { type EditorMappedNode, createEditorSession } from '@markup-carve/carve'
+import { type MappedNode as EditorMappedNode, mappedNodes } from './engine.js'
 import { EditorSelection, EditorState, type Extension, Prec, type SelectionRange, StateEffect, StateField, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { type Command, Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType, keymap } from '@codemirror/view'
 import { substitutionBounds } from './substitution.js'
@@ -107,7 +107,7 @@ export interface TaskMarker { from: number; to: number; itemEnd: number; content
 
 /** The hidden `- [ ] ` of every task item: from the bullet to where the item's text starts. */
 export function liveTaskMarkers(source: string, mapped?: readonly EditorMappedNode[]): TaskMarker[] {
-  const nodes = mapped ?? createEditorSession(source).snapshot().nodes
+  const nodes = mapped ?? mappedNodes(source)
   const byParent = childrenByParent(nodes)
   const markers: TaskMarker[] = []
   for (const node of nodes) {
@@ -124,7 +124,7 @@ export function livePresentations(
   selections: readonly Pick<SelectionRange, 'from' | 'to'>[],
   mapped?: readonly EditorMappedNode[],
 ): LivePresentation[] {
-  const nodes = mapped ?? createEditorSession(source).snapshot().nodes
+  const nodes = mapped ?? mappedNodes(source)
   const all: LivePresentation[] = []
   const byParent = childrenByParent(nodes)
   const textByAncestor = new Map<string, { start: number; end: number }>()
@@ -469,8 +469,8 @@ export function taskBackspaceEdit(source: string, head: number): TaskBackspaceEd
   for (const change of [...changes].reverse()) next = next.slice(0, change.from) + change.insert + next.slice(change.to)
   // The engine decides: the text opens a paragraph of its own and no other item is lost.
   const items = (nodes: readonly EditorMappedNode[]): number => nodes.filter((node) => node.type === 'list_item').length
-  const reparsed = createEditorSession(next).snapshot().nodes
-  return reparsed.some((node) => node.type === 'paragraph' && node.start === result.head) && items(reparsed) === items(createEditorSession(source).snapshot().nodes) - 1 ? result : null
+  const reparsed = mappedNodes(next)
+  return reparsed.some((node) => node.type === 'paragraph' && node.start === result.head) && items(reparsed) === items(mappedNodes(source)) - 1 ? result : null
 }
 
 /**
@@ -499,7 +499,7 @@ function emptyTaskEdit(source: string, lineStart: number, lineEnd: number, itemE
   let next = source
   for (const change of [...changes].reverse()) next = next.slice(0, change.from) + change.insert + next.slice(change.to)
   // Only the task's ancestors may span the emptied line; any other item there adopted its children.
-  const spanning = (text: string): number => createEditorSession(text).snapshot().nodes.filter((node) => node.type === 'list_item' && node.start < lineStart && node.end > lineStart).length
+  const spanning = (text: string): number => mappedNodes(text).filter((node) => node.type === 'list_item' && node.start < lineStart && node.end > lineStart).length
   return spanning(next) <= spanning(source) ? result : null
 }
 
@@ -647,7 +647,7 @@ class LivePreviewState {
       this.timer = null
       if (view.state.doc.toString() !== expected) return
       const { from, to } = livePreviewWindow(expected, view.viewport.from, view.viewport.to)
-      const nodes = shifted(createEditorSession(expected.slice(from, to)).snapshot().nodes, from)
+      const nodes = shifted(mappedNodes(expected.slice(from, to)), from)
       this.parsed = { source: expected, from, to, nodes }
       const markers = Decoration.set(liveTaskMarkers(expected, nodes).filter((marker) => marker.from < marker.to).map((marker) => TASK_MARKER.range(marker.from, marker.to)), true)
       this.decorations = this.present(view)

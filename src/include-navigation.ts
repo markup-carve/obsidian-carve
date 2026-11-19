@@ -3,19 +3,12 @@
  * should do.
  *
  * The engine is the authority for recognition: a `{{ }}` token inside a code
- * span, a fence or a malformed option list is text, and the expander never
- * asks for it. `findDirectiveSites` visits exactly the blocks and inline
- * containers the expander visits, so the gesture and the preview cannot
- * disagree about which tokens are live.
- *
- * This module used to answer that question itself - a `{{ ... }}` regex over
- * the source, then one throwaway `expandIncludes` run per candidate with a
- * sentinel path, to see whether the expander asked for it. That was correct
- * and quadratic. The locator replaces both.
+ * span, a fence or a malformed option list is text. A 0.2 parse keeps every
+ * live directive as an `include` node with its position (C2-N-083), so the
+ * gesture and the preview cannot disagree about which tokens are live.
  */
-import { findDirectiveSites, parse, type DirectiveSite as EngineDirectiveSite } from '@markup-carve/carve'
+import { mappedNodes } from './engine.js'
 import { containmentMessage, resolveVaultPath, unresolvedMessage } from './includes.js'
-import { codepointToUtf16 } from './offsets.js'
 
 /** A live include directive, with UTF-16 offsets into the source. */
 export interface DirectiveSite {
@@ -30,17 +23,12 @@ export type IncludeNavigation =
   | { kind: 'denied'; message: string }
   | { kind: 'missing'; message: string }
 
-function siteOf(site: EngineDirectiveSite, toUtf16: (offset: number) => number): DirectiveSite {
-  return { path: site.directive.path, from: toUtf16(site.start), to: toUtf16(site.end) }
-}
-
 /** Every live include directive in `source`, in source order. */
 export function directiveSites(source: string): DirectiveSite[] {
   if (!source.includes('{{')) return []
-  const found = findDirectiveSites(parse(source, { positions: true }))
-  if (!found.length) return []
-  const toUtf16 = codepointToUtf16(source)
-  return found.map((site) => siteOf(site, toUtf16))
+  return mappedNodes(source)
+    .filter((node) => node.type === 'include' && typeof node.node['path'] === 'string')
+    .map((node) => ({ path: node.node['path'] as string, from: node.start, to: node.end }))
 }
 
 /**

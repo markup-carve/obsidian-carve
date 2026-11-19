@@ -1,5 +1,6 @@
-import { carveToAstJson, createEditorSession, htmlToCarve, parse } from '@markup-carve/carve'
-import { codepointToUtf16 } from './offsets.js'
+import { encodeTree, importDocument, parse } from '@markup-carve/carve'
+import { byteToUtf16, mappedNodes } from './engine.js'
+import { frontmatterOf } from './metadata.js'
 import { renderCarve } from './render.js'
 import { substitutionHalves } from './substitution.js'
 
@@ -99,7 +100,7 @@ export function renderOpaqueConstruct(item: OpaqueConstruct): string {
 }
 
 function protectAdvanced(source: string): { source: string; opaque: OpaqueConstruct[] } {
-  const nodes = createEditorSession(source).snapshot().nodes
+  const nodes = mappedNodes(source)
   const candidates: Array<{ start: number; end: number; type: string }> = []
   for (const node of nodes) {
     if (node.type && OPAQUE_TYPES.has(node.type)) candidates.push({ start: node.start, end: node.end, type: node.type })
@@ -144,15 +145,15 @@ function semanticJson(source: string): string | null {
     const nodeType = 'type' in value ? value.type : undefined
     return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'pos' && key !== 'srcByteLength' && !(nodeType === 'thematic_break' && key === 'marker')).map(([key, child]) => [key, clean(child)]))
   }
-  try { return JSON.stringify(clean(carveToAstJson(source))) } catch { return null }
+  try { return JSON.stringify(clean(JSON.parse(encodeTree(parse(source))))) } catch { return null }
 }
 
 function splitFrontmatter(source: string): { frontmatter: string; body: string } {
   // The engine decides which openers and closers count, so the split matches the reading view.
   if (!source.startsWith('---')) return { frontmatter: '', body: source }
-  const end = parse(source, { positions: true }).frontmatter?.pos?.endOffset
+  const end = frontmatterOf(parse(source, { positions: true }))?.pos?.endOffset
   if (end === undefined) return { frontmatter: '', body: source }
-  const at = codepointToUtf16(source)(end)
+  const at = byteToUtf16(source)(end)
   const split = at + (/^(?:\r\n?|\n)/.exec(source.slice(at))?.[0].length ?? 0)
   return { frontmatter: source.slice(0, split), body: source.slice(split) }
 }
@@ -180,13 +181,13 @@ function freshToken(base: string, ...texts: string[]): string {
 function renderWithPendingTasks(source: string): string {
   // Skip the extra parse unless some line could be one.
   if (!/^[ \t>]*[-*] [ \t]*\[[ xX_>?/!-]\][ \t]*$/m.test(source)) return renderCarve(source)
-  const nodes = createEditorSession(source).snapshot().nodes
+  const nodes = mappedNodes(source)
   const token = freshToken('CARVEPENDINGTASKX9F3A', source)
   const childrenOf = new Map<string, typeof nodes[number][]>()
   const itemsOf = new Map<string, typeof nodes[number][]>()
   for (const node of nodes) {
     if (node.type === 'list_item') {
-      const list = /^(.*)\/items\/\d+$/.exec(node.path)?.[1]
+      const list = /^(.*)\/children\/\d+$/.exec(node.path)?.[1]
       if (list) {
         const siblings = itemsOf.get(list) ?? []
         siblings.push(node)
@@ -205,7 +206,7 @@ function renderWithPendingTasks(source: string): string {
     const content = children[0]
     if (content?.type !== 'paragraph' || content.start <= node.start || children.some((child) => child !== content && child.type !== 'list')) continue
     if (/^[-*] [ \t]*$/.test(source.slice(node.start, content.start)) && /^\[[ xX_>?/!-]\]$/.test(source.slice(content.start, content.end))) {
-      const list = /^(.*)\/items\/\d+$/.exec(node.path)?.[1]
+      const list = /^(.*)\/children\/\d+$/.exec(node.path)?.[1]
       const siblings = list ? itemsOf.get(list) ?? [] : []
       // Promoting one pending item in a mixed list splits its HTML into two
       // lists. The round trip then inserts a blank line and locks visual mode.
@@ -218,15 +219,23 @@ function renderWithPendingTasks(source: string): string {
   return renderCarve(marked).split(`aria-label="${token}"`).join('aria-label="Toggle task"').split(` ${token}`).join(' <br data-carve-placeholder>').split(token).join('')
 }
 
-/** Like the engine's `htmlToCarve`, but an empty task item stays `- [ ] ` instead of `- [ ] +` or a hard break. */
-function visualHtmlToCarve(html: string): ReturnType<typeof htmlToCarve> {
+interface HtmlConversion { value: string; report: { diagnostics: unknown[] } }
+
+/** The HTML importer with raw HTML off, the 0.2 spelling of 0.1's safe mode. */
+function htmlToCarve(html: string): HtmlConversion {
+  const imported = importDocument(html, { from: 'html', rawHtml: false })
+  return { value: imported.source, report: { diagnostics: imported.diagnostics } }
+}
+
+/** Like the engine's HTML importer, but an empty task item stays `- [ ] ` instead of a hard break. */
+function visualHtmlToCarve(html: string): HtmlConversion {
   const token = freshToken('CARVEEMPTYTASKX9F3A', html)
   let found = false
   // Attribute values can hold `>` (`data-task-state=">"`), so tags are matched quote-aware.
   const attributes = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`
   const emptyTask = new RegExp(String.raw`(<li\b${attributes}>\s*<input\b${attributes}\btype="checkbox"${attributes}>)(?:\s|&nbsp;|<br\b${attributes}>)*(?=<\/li>|<ul\b|<ol\b)`, 'gi')
   const marked = html.replace(emptyTask, (_whole, open: string) => { found = true; return `${open} ${token}` })
-  const converted = htmlToCarve(marked, { mode: 'safe' })
+  const converted = htmlToCarve(marked)
   return found ? { ...converted, value: converted.value.split(token).join('') } : converted
 }
 

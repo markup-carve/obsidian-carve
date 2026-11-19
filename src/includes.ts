@@ -12,7 +12,8 @@
  * vault-relative and reaches the vault through the gateway, so the process
  * working directory is not merely rejected - it is unreachable.
  */
-import { expandIncludes, parse, renderDocument, resolve as resolveDocument, type Document, type IncludeDependency, type IncludeWarning, type RenderDocumentOptions } from '@markup-carve/carve'
+import { includeDependencies, parseWithDiagnostics, render, type Diagnostic, type DocumentNode, type IncludeDependency, type IncludeRequest, type RenderOptions } from '@markup-carve/carve'
+import { byteToUtf16 } from './engine.js'
 import { ORIGIN_ATTRIBUTE, RENDER_OPTIONS, isFolderRelativeDestination, rewriteWikiSyntax } from './render.js'
 
 /** The vault, narrowed to what expansion needs, so tests need no Obsidian. */
@@ -31,7 +32,7 @@ export interface IncludeDiagnostic {
 }
 
 export interface PreviewExpansion {
-  doc: Document
+  doc: DocumentNode
   diagnostics: IncludeDiagnostic[]
   /** Warnings the engine raised but did not retain; see IncludeOptions.maxWarnings. */
   suppressed: number
@@ -77,17 +78,15 @@ export interface PreviewExpansionOptions {
    * its own only to configure the extensions or the profile that BOTH paths
    * would then be configured with.
    *
-   * `target` is not among them. The reading view inserts the result as HTML,
-   * so a caller that could ask for Markdown here would get Markdown displayed
-   * as markup rather than an error. Neither is `allowRawHtml`: raw HTML is off
+   * `rawHtml` is not among them: raw HTML is off
    * for vault content on every path, and an options object that REPLACED the
    * default rather than extending it would turn it back on by omission.
    */
   renderOptions?: PreviewRenderOptions
 }
 
-/** Render options a preview may carry: everything but the renderer to finish with. */
-export type PreviewRenderOptions = Omit<RenderDocumentOptions, 'target'>
+/** Render options a preview may carry: everything but raw HTML and the include resolver. */
+export type PreviewRenderOptions = Omit<RenderOptions, 'rawHtml' | 'includes'>
 
 export const DEFAULT_MAX_ROUNDS = 20
 export const MAX_CACHE_ENTRIES = 128
@@ -150,7 +149,8 @@ export function resolveVaultPath(target: string, parent: string): string | null 
 /** Vault-relative folder holding `path`, empty at the vault root. */
 export function directoryOf(path: string): string { return path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '' }
 
-const UNRESOLVED_MESSAGE = /^Include "(.+)" could not be resolved\.$/
+const ENGINE_INCLUDE_MESSAGE = /^Include "(.+)" was not expanded:/
+const UNRESOLVED_CODES = new Set(['include-not-found', 'include-unreadable', 'include-non-text'])
 
 /**
  * Wording shared with the navigation gesture, so a refusal explained above the
@@ -168,21 +168,32 @@ export function unresolvedMessage(path: string): string { return `Include "${pat
  */
 export function directiveKey(includingFile: string, path: string): string { return `${includingFile}\u0000${path}` }
 
+/** 1-based line and column of a UTF-8 byte offset in `text`, the column in UTF-16 units. */
+function lineColumn(text: string, byteOffset: number): { line: number; column: number } {
+  const at = byteToUtf16(text)(byteOffset)
+  const before = text.slice(0, at)
+  const lineStart = before.lastIndexOf('\n') + 1
+  return { line: before.split('\n').length, column: at - lineStart + 1 }
+}
+
 /**
- * Relabel the unresolved warnings that were really containment refusals.
- *
- * The resolver contract reports a missing file and a refused one the same way -
- * as null - so the distinction only exists on this side. A wording change in
- * the engine costs the relabel, not the diagnostic: an unmatched warning is
- * passed through as the engine wrote it.
+ * The engine's include diagnostics in the plugin's terms: a refused target
+ * reads as a containment refusal and a missing, unreadable or non-text one in
+ * the plugin's own wording, so the reading view says the same thing it always
+ * did. Anything else is passed through as the engine wrote it. `sources` maps a
+ * file id to the text its byte ranges count in; the root document has no id.
  */
-export function classifyDiagnostics(warnings: readonly IncludeWarning[], denied: ReadonlySet<string>): IncludeDiagnostic[] {
-  return warnings.map((warning) => {
-    const path = warning.rule === 'include-unresolved' && warning.file !== undefined ? UNRESOLVED_MESSAGE.exec(warning.message)?.[1] : undefined
-    const diagnostic: IncludeDiagnostic = path !== undefined && denied.has(directiveKey(warning.file as string, path))
-      ? { line: warning.line, column: warning.column, rule: 'include-containment', message: containmentMessage(path) }
-      : { line: warning.line, column: warning.column, rule: warning.rule, message: warning.message }
-    if (warning.file !== undefined) diagnostic.file = warning.file
+export function classifyDiagnostics(diagnostics: readonly Diagnostic[], sources: ReadonlyMap<string | undefined, string>): IncludeDiagnostic[] {
+  return diagnostics.map((entry) => {
+    const text = sources.get(entry.file) ?? ''
+    const { line, column } = entry.range ? lineColumn(text, entry.range.startOffset) : { line: 1, column: 1 }
+    const path = ENGINE_INCLUDE_MESSAGE.exec(entry.message)?.[1]
+    const diagnostic: IncludeDiagnostic = path !== undefined && entry.code === 'include-outside-root'
+      ? { line, column, rule: 'include-containment', message: containmentMessage(path) }
+      : path !== undefined && UNRESOLVED_CODES.has(entry.code)
+        ? { line, column, rule: 'include-unresolved', message: unresolvedMessage(path) }
+        : { line, column, rule: entry.code, message: entry.message }
+    if (entry.file !== undefined) diagnostic.file = entry.file
     return diagnostic
   })
 }
@@ -190,17 +201,13 @@ export function classifyDiagnostics(warnings: readonly IncludeWarning[], denied:
 function watchPathsOf(dependencies: readonly IncludeDependency[], attempted: ReadonlySet<string>): string[] {
   const paths = new Set<string>(attempted)
   // Dependencies the engine noted without calling the resolver - a cycle, a
-  // depth refusal - carry an id that is already a vault path when it came from
-  // an earlier successful resolve.
-  for (const dependency of dependencies) if (dependency.resolved) paths.add(dependency.id)
+  // depth refusal - carry the id of an earlier successful resolve.
+  for (const dependency of dependencies) if (dependency.read && dependency.file !== undefined) paths.add(dependency.file)
   return [...paths]
 }
 
 /**
  * Expand every include the document reaches, reading through `gateway`.
- *
- * The returned document still needs `resolve()` before rendering, exactly as
- * the CLI's expanded path does.
  */
 export async function expandForPreview(source: string, options: PreviewExpansionOptions): Promise<PreviewExpansion> {
   const { sourcePath, gateway } = options
@@ -210,12 +217,12 @@ export async function expandForPreview(source: string, options: PreviewExpansion
   // content is inlined the reading view only knows the ROOT document's path, so
   // an unrebased `[[Sibling]]` would open a note beside the root.
   const rewrite = (text: string, base: string): string => (options.rewriteWiki ?? true) ? rewriteWikiSyntax(text, base) : text
-  // `matchInline` and `matchBlock` are parse-stage: an extension handed to the
-  // renderer that never reached the parse adds no syntax, so its own markup
-  // stays ordinary text. carve-js#1693 is the other half - `expandIncludes`
-  // parses a CHILD without them - so an extension's syntax still applies to
-  // the parent only, which is why no production caller configures one yet.
-  const parseOptions = { positions: true as const, ...(options.renderOptions?.extensions ? { extensions: options.renderOptions.extensions } : {}) }
+  // Extensions are parse-stage: one handed only to the renderer adds no syntax.
+  const parseOptions = {
+    positions: true as const,
+    ...(options.renderOptions?.extensions ? { extensions: options.renderOptions.extensions } : {}),
+    ...(options.renderOptions?.headingIds ? { headingIds: options.renderOptions.headingIds } : {}),
+  }
   const rewritten = rewrite(source, '')
   // A read that throws is not retried: without this the next round would ask
   // for it again and the loop would only end at the round cap.
@@ -225,29 +232,31 @@ export async function expandForPreview(source: string, options: PreviewExpansion
     const attempted = new Set<string>()
     const denied = new Set<string>()
     const pending = new Map<string, number>()
-    const result = expandIncludes(parse(rewritten, parseOptions), rewritten, {
-      sourcePath,
-      resolve: (path, context) => {
-        const parent = context.stack[context.stack.length - 1] ?? sourcePath
-        const vaultPath = resolveVaultPath(path, parent)
-        if (vaultPath === null) { denied.add(directiveKey(parent, path)); return null }
-        attempted.add(vaultPath)
-        if (unreadable.has(vaultPath)) return null
-        const mtime = gateway.mtime(vaultPath)
-        if (mtime === null) return null
-        const cached = cache.get(vaultPath, mtime)
-        if (cached === undefined) { pending.set(vaultPath, mtime); return null }
-        return { source: rewrite(cached, directoryOf(vaultPath)), id: vaultPath }
-      },
-    })
+    const sources = new Map<string | undefined, string>([[undefined, rewritten]])
+    const resolver = ({ path, from }: IncludeRequest) => {
+      const parent = from ?? sourcePath
+      const vaultPath = resolveVaultPath(path, parent)
+      if (vaultPath === null) { denied.add(directiveKey(parent, path)); return { error: 'outside_root' as const } }
+      attempted.add(vaultPath)
+      if (unreadable.has(vaultPath)) return { error: 'unreadable' as const }
+      const mtime = gateway.mtime(vaultPath)
+      if (mtime === null) return { error: 'not_found' as const }
+      const cached = cache.get(vaultPath, mtime)
+      if (cached === undefined) { pending.set(vaultPath, mtime); return { error: 'not_found' as const } }
+      const text = rewrite(cached, directoryOf(vaultPath))
+      sources.set(vaultPath, text)
+      return { text, id: vaultPath }
+    }
+    const result = parseWithDiagnostics(rewritten, { ...parseOptions, includes: { resolver, file: sourcePath } })
+    const dependencies = includeDependencies(result.document)
 
     if (pending.size === 0 || round >= maxRounds) {
       return {
-        doc: result.doc,
-        diagnostics: classifyDiagnostics(result.warnings, denied),
-        suppressed: result.suppressedWarnings,
-        watchPaths: watchPathsOf(result.dependencies, attempted),
-        resolvedPaths: result.dependencies.filter((dependency) => dependency.resolved).map((dependency) => dependency.id),
+        doc: result.document,
+        diagnostics: classifyDiagnostics(result.diagnostics.filter((entry) => entry.code.startsWith('include-')), sources),
+        suppressed: result.suppressedDiagnostics,
+        watchPaths: watchPathsOf(dependencies, attempted),
+        resolvedPaths: dependencies.filter((dependency) => dependency.read && dependency.file !== undefined).map((dependency) => dependency.file as string),
         deniedTargets: [...denied].map((key) => { const at = key.indexOf('\u0000'); return { file: key.slice(0, at), path: key.slice(at + 1) } }),
       }
     }
@@ -272,68 +281,43 @@ const REBASED_BY_REWRITE = ['carve-wikilink', 'carve-embed']
  *
  * The identity is the engine's `pos.file` (PART 9 section 19), not a source
  * rewrite: a regex over the child's source would also hit destinations inside
- * code spans and fences, which are text rather than links. Run it AFTER
- * `resolve()`, where a reference link finally carries its destination.
+ * code spans and fences, which are text rather than links. The 0.2 parse
+ * returns the resolved tree, so a reference link already carries its destination.
  */
 export function stampIncludeOrigins(node: unknown, parentFile?: string): void {
   if (node === null || typeof node !== 'object') return
-  const record = node as { type?: string; href?: string; pos?: { file?: string }; attrs?: { classes?: string[]; keyValues?: Record<string, string> } }
+  const record = node as { type?: string; href?: string; pos?: { file?: string }; attrs?: { classes?: string[]; keyValues?: [string, string][] } }
   const file = record.pos?.file
   if (typeof record.type === 'string') {
     // An authored attribute of this name never survives. The origin states
     // where the engine says the node came from; a document does not get to
     // assert it and redirect where a click lands.
-    if (record.attrs?.keyValues) delete record.attrs.keyValues[ORIGIN_ATTRIBUTE]
+    if (record.attrs?.keyValues) record.attrs.keyValues = record.attrs.keyValues.filter(([key]) => key !== ORIGIN_ATTRIBUTE)
     const rewritten = record.attrs?.classes?.some((name) => REBASED_BY_REWRITE.includes(name)) ?? false
     // A link carries the file its DESTINATION is relative to. Any other node
     // carries it only where an included region begins - the block whose file
     // differs from its parent's - so one attribute marks the region instead of
     // one per node inside it.
     //
-    // A directive expanded mid-sentence marks whatever the child rendered as
-    // an ELEMENT. A child contributing only plain text marks nothing, and not
-    // because the expansion failed to attribute it: `expandIncludes` gives the
-    // child's text its own node with pos.file, and `resolve()` coalesces that
-    // run back into the parent's (carve-js#1679 was measured before that pass
-    // and closed on the tree it produces, not the one rendered).
     const stamp = record.type === 'link'
       ? file !== undefined && !rewritten && typeof record.href === 'string' && isFolderRelativeDestination(record.href)
       : file !== undefined && file !== parentFile
     if (stamp) {
       record.attrs = record.attrs ?? {}
-      record.attrs.keyValues = { ...record.attrs.keyValues, [ORIGIN_ATTRIBUTE]: file as string }
+      record.attrs.keyValues = [...(record.attrs.keyValues ?? []), [ORIGIN_ATTRIBUTE, file as string]]
     }
   }
   for (const value of Object.values(record as Record<string, unknown>)) if (Array.isArray(value)) for (const child of value) stampIncludeOrigins(child, file ?? parentFile)
 }
 
 /**
- * Expand, then render the same way the plain preview path renders.
- *
- * `renderDocument` is the engine's seam for a document the host already holds
- * (carve-js#1677): it runs the composition the string entry points run -
- * resolution, the extension transforms, the profile pass, the renderer - one
- * step later. `renderHtml` ran only the last of those, so this path agreed
- * with `carveToHtml` in `render.ts` only while there was no extension and no
- * profile to lose. The equivalence this comment claims is now structural.
- *
- * Resolution is run once here as well, because the origin stamp needs the
- * resolved tree (a reference link only carries its destination after it) and
- * the seam does not expose that point. The seam then resolves again, which is
- * NOT a no-op: the ids this call assigns are the ones that survive a
- * collision, so the caller's heading-id policy has to be applied here rather
- * than left to the seam. Byte-equality with the string entry point is what the
- * tests pin, not an idempotence claim.
+ * Expand, then render the same way the plain preview path renders: the 0.2
+ * `render` takes the tree, and the heading-id policy went to the parse that
+ * assigned the ids.
  */
 export async function renderCarveWithIncludes(source: string, options: PreviewExpansionOptions): Promise<PreviewExpansion & { html: string }> {
   const expansion = await expandForPreview(source, options)
-  const renderOptions: PreviewRenderOptions = options.renderOptions ?? RENDER_OPTIONS
-  // The heading-id policy has to be the caller's HERE: this resolve is the one
-  // that assigns the ids, and the seam's own resolve is the no-op by then.
-  const resolved = resolveDocument(expansion.doc, {
-    ...(renderOptions.asciiHeadingIds !== undefined ? { asciiHeadingIds: renderOptions.asciiHeadingIds } : {}),
-    ...(renderOptions.lowercaseHeadingIds !== undefined ? { lowercaseHeadingIds: renderOptions.lowercaseHeadingIds } : {}),
-  })
-  stampIncludeOrigins(resolved)
-  return { ...expansion, html: renderDocument(resolved, { ...renderOptions, ...RENDER_OPTIONS, target: 'html' }) }
+  const renderOptions: PreviewRenderOptions = options.renderOptions ?? {}
+  stampIncludeOrigins(expansion.doc)
+  return { ...expansion, html: render(expansion.doc, { ...renderOptions, ...RENDER_OPTIONS }) }
 }

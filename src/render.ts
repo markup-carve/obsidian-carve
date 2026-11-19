@@ -1,11 +1,11 @@
-import { carveToHtml, parse, type Document } from '@markup-carve/carve'
-import { codepointToUtf16 } from './offsets.js'
+import { parse, render, type DocumentNode } from '@markup-carve/carve'
+import { byteToUtf16 } from './engine.js'
 
 /** Raw HTML is deliberately disabled for vault content by default. */
-export const RENDER_OPTIONS = { allowRawHtml: false } as const
+export const RENDER_OPTIONS = { rawHtml: false } as const
 
 export function renderCarve(source: string): string {
-  return carveToHtml(rewriteWikiSyntax(source), RENDER_OPTIONS)
+  return render(rewriteWikiSyntax(source), RENDER_OPTIONS)
 }
 
 const WIKILINK = /(!?)\[\[([^\]|#]+)(#[^\]|]+)?(?:\|([^\]]+))?\]\]/g
@@ -45,10 +45,10 @@ function collectSpans(node: unknown, toUtf16: (offset: number) => number, text: 
  * link destination, front matter or after a backslash escape stays literal.
  * Pass `document` when it is already parsed with positions.
  */
-export function wikilinkMatches(source: string, document?: Document): WikiMatch[] {
+export function wikilinkMatches(source: string, document?: DocumentNode): WikiMatch[] {
   if (!source.includes('[[')) return []
   const tree = document ?? parse(source, { positions: true })
-  const toUtf16 = codepointToUtf16(source)
+  const toUtf16 = byteToUtf16(source)
   const text: Span[] = []
   const verbatim: Span[] = []
   collectSpans(tree.children, toUtf16, text, verbatim)

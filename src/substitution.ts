@@ -1,4 +1,4 @@
-import { createEditorSession } from '@markup-carve/carve'
+import { mappedNodes } from './engine.js'
 
 interface Bounded { path: string; type?: string; start: number; end: number }
 
@@ -31,7 +31,8 @@ export function substitutionBounds(
 
 /** The two halves of a standalone `{~ … ~}` source, or null when it holds no top-level arrow. */
 export function substitutionHalves(source: string): { old: string; new: string } | null {
-  const nodes: readonly Bounded[] = createEditorSession(source).snapshot().nodes
+  // Carve 0.2 has no substitution node (U-069), so a 0.2 parse finds none.
+  const nodes: readonly Bounded[] = mappedNodes(source)
   const node = nodes.find((candidate) => candidate.type === 'substitution'
     && candidate.start === 0 && candidate.end === source.length)
   if (!node) return null
