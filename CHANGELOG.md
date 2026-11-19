@@ -7,6 +7,8 @@
 - The plugin runs on Carve 0.2: carve-js, carve-grammars and carve-lsp are pinned to their `next2` commits. Vault documents are read as Carve 0.2 reads them; `spec/0.2/UPGRADING.md` in the Carve repository lists the changes.
 - An include directive inside a sentence is text in Carve 0.2, so the reading view no longer expands it and the editor no longer offers to open it.
 - Flattening keeps an id that two files define in both places, since Carve 0.2 renames no colliding ids.
+- Visual mode saves canonical Carve 0.2: a `#` heading is written as an `=` heading.
+- Live Preview styles `=` headings, 0.2 table rows, image captions and attribute lines above blocks, and a substitution `{~old~>new~}` shows as a strike, as Carve 0.2 reads it.
 
 ## 0.1.7
 

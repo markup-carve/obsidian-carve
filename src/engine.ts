@@ -27,10 +27,10 @@ export function byteToUtf16(source: string): (offset: number) => number {
  * no incremental session; `UPGRADING.md` "parse again").
  *
  * `path` is the node's RFC 6901 pointer, so a list item is `/children/1/children/0`.
- * `tokens` holds the trailing `{...}` attribute of an inline node, the one
- * source token the editor surfaces still read.
+ * `tokens` holds the `{...}` attributes the editor surfaces still read: the
+ * trailing one of an inline node, and the attribute lines of a block (`block`).
  */
-export interface MappedToken { role: 'attribute'; start: number; end: number }
+export interface MappedToken { role: 'attribute'; start: number; end: number; block?: true }
 export interface MappedNode { path: string; type: string; start: number; end: number; tokens: MappedToken[]; node: Record<string, unknown> }
 
 /** The positioned tree of `source`, every node flattened in document order. */
@@ -57,10 +57,36 @@ export function mappedNodes(source: string, document?: DocumentNode): MappedNode
   return nodes
 }
 
-// An inline node's range covers its trailing `{...}` attribute; a block's does not.
+// An inline node's range covers its trailing `{...}` attribute; a block's range
+// starts at its attribute lines, one token per line.
 function attributeTokens(source: string, record: Record<string, unknown>, start: number, end: number): MappedToken[] {
-  if (record.attrs === undefined || end <= start || source[end - 1] !== '}') return []
+  if (record.attrs === undefined || end <= start) return []
+  if (source[start] === '{') {
+    const blockTokens = blockAttributeTokens(source, record, start, end)
+    if (blockTokens.length) return blockTokens
+  }
+  if (source[end - 1] !== '}') return []
   const open = source.lastIndexOf('{', end - 1)
   if (open <= start) return []
   return [{ role: 'attribute', start: open, end }]
+}
+
+const ATTRIBUTE_LINE = /^\{[^\n]*\}[ \t]*$/
+
+function blockAttributeTokens(source: string, record: Record<string, unknown>, start: number, end: number): MappedToken[] {
+  const column = start - (source.lastIndexOf('\n', start - 1) + 1)
+  const childStarts = Object.values(record).flatMap((value) => Array.isArray(value) ? value : [value])
+    .map((child) => (child as { pos?: { startOffset?: number } } | null)?.pos?.startOffset)
+    .filter((offset): offset is number => offset !== undefined)
+  const contentStart = childStarts.length ? Math.min(...childStarts.map(byteToUtf16(source))) : end
+  const tokens: MappedToken[] = []
+  for (let at = start; at < end && at < contentStart;) {
+    const lineEnd = source.indexOf('\n', at)
+    if (lineEnd < 0 || lineEnd >= end) break
+    const text = source.slice(at, lineEnd)
+    if (!ATTRIBUTE_LINE.test(text)) break
+    tokens.push({ role: 'attribute', start: at, end: at + text.trimEnd().length, block: true })
+    at = Math.min(lineEnd + 1 + column, end)
+  }
+  return tokens
 }

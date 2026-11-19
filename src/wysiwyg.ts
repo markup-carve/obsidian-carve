@@ -101,11 +101,11 @@ export function renderOpaqueConstruct(item: OpaqueConstruct): string {
 
 function protectAdvanced(source: string): { source: string; opaque: OpaqueConstruct[] } {
   const nodes = mappedNodes(source)
-  const candidates: Array<{ start: number; end: number; type: string }> = []
+  const candidates: Array<{ start: number; end: number; type: string; block?: true }> = []
   for (const node of nodes) {
     if (node.type && OPAQUE_TYPES.has(node.type)) candidates.push({ start: node.start, end: node.end, type: node.type })
     if (node.type === 'code_block' && /^`{3,}[ \t]*mermaid\b/i.test(source.slice(node.start, node.end))) candidates.push({ start: node.start, end: node.end, type: 'mermaid' })
-    for (const token of node.tokens) if (token.role === 'attribute') candidates.push({ start: token.start, end: token.end, type: 'attributes' })
+    for (const token of node.tokens) if (token.role === 'attribute') candidates.push({ start: token.start, end: token.end, type: 'attributes', ...(token.block ? { block: true as const } : {}) })
     if (node.type === 'text') for (const match of source.slice(node.start, node.end).matchAll(/!?\[\[[^\]]+\]\]/g)) candidates.push({ start: node.start + match.index!, end: node.start + match.index! + match[0].length, type: match[0].startsWith('!') ? 'embed' : 'wikilink' })
   }
   candidates.sort((a, b) => a.start - b.start || b.end - a.end)
@@ -124,7 +124,9 @@ function protectAdvanced(source: string): { source: string; opaque: OpaqueConstr
   let protectedSource = source
   for (let index = selected.length - 1; index >= 0; index--) {
     const authored = opaque[index]!.source
-    protectedSource = protectedSource.slice(0, selected[index]!.start) + opaque[index]!.token + (authored.endsWith('\n') ? '\n' : '') + protectedSource.slice(selected[index]!.end)
+    // A block attribute token stands alone: in 0.2 a heading or quote line directly below text continues it (U-001).
+    const after = authored.endsWith('\n') ? '\n' : selected[index]!.block ? '\n' : ''
+    protectedSource = protectedSource.slice(0, selected[index]!.start) + opaque[index]!.token + after + protectedSource.slice(selected[index]!.end)
   }
   return { source: protectedSource, opaque }
 }
@@ -205,12 +207,14 @@ function renderWithPendingTasks(source: string): string {
     const children = childrenOf.get(node.path) ?? []
     const content = children[0]
     if (content?.type !== 'paragraph' || content.start <= node.start || children.some((child) => child !== content && child.type !== 'list')) continue
-    if (/^[-*] [ \t]*$/.test(source.slice(node.start, content.start)) && /^\[[ xX_>?/!-]\]$/.test(source.slice(content.start, content.end))) {
+    // A 0.2 paragraph range keeps the item's trailing blanks.
+    const box = source.slice(content.start, content.end).replace(/[ \t]+$/, '')
+    if (/^[-*] [ \t]*$/.test(source.slice(node.start, content.start)) && /^\[[ xX_>?/!-]\]$/.test(box)) {
       const list = /^(.*)\/children\/\d+$/.exec(node.path)?.[1]
       const siblings = list ? itemsOf.get(list) ?? [] : []
       // Promoting one pending item in a mixed list splits its HTML into two
       // lists. The round trip then inserts a blank line and locks visual mode.
-      if (siblings.every((item) => /^[-*] [ \t]*\[[ xX_>?/!-]\]/.test(source.slice(item.start, item.end)))) at.push(content.end)
+      if (siblings.every((item) => /^[-*] [ \t]*\[[ xX_>?/!-]\]/.test(source.slice(item.start, item.end)))) at.push(content.start + box.length)
     }
   }
   if (!at.length) return renderCarve(source)

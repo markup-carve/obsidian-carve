@@ -342,14 +342,12 @@ test('comments retain readable text while their delimiters hide', () => {
   assert.ok(shown.some((item) => item.kind === 'mark' && source.slice(item.from, item.to) === 'block note'))
 })
 
-test('CriticMarkup distinguishes inserts, deletes, substitutions, and comments', () => {
+test('CriticMarkup distinguishes inserts, deletes, and comments; a substitution is a strike in 0.2 (U-069)', () => {
   const source = '{+inserted+} {-deleted-} {~old~>new~} {#comment#}'
   const shown = livePresentations(source, [{ from: source.length, to: source.length }])
   assert.deepEqual(shown.filter((item) => item.kind === 'mark').map((item) => [item.className, source.slice(item.from, item.to)]), [
     ['carve-live-insert', 'inserted'],
     ['carve-live-delete', 'deleted'],
-    ['carve-live-delete', 'old'],
-    ['carve-live-insert', 'new'],
     ['carve-live-comment', 'comment'],
   ])
 })
@@ -375,34 +373,17 @@ test('Obsidian wikilinks and embeds become source-backed widgets', () => {
   assert.equal(livePresentations(source, [{ from: 8, to: 8 }]).some((item) => item.kind === 'widget' && item.className === 'carve-live-wikilink'), false)
 })
 
-test('a substitution splits at the first top-level arrow, not the last one anywhere', () => {
-  // carve#2083. The greedy scan this replaces took the last arrow in the pair.
-  const source = '{~a~>b~>c~}'
-  const shown = livePresentations(source, [{ from: source.length, to: source.length }])
-  assert.deepEqual(shown.filter((item) => item.kind === 'mark').map((item) => [item.className, source.slice(item.from, item.to)]), [
-    ['carve-live-delete', 'a'],
-    ['carve-live-insert', 'b~>c'],
-  ])
+test('a substitution arrow gives no insert or delete halves in 0.2 (U-069)', () => {
+  for (const source of ['{~a~>b~>c~}', '{~~>new~}', '{~old~>~}']) {
+    const shown = livePresentations(source, [{ from: source.length, to: source.length }])
+    assert.deepEqual(shown.filter((item) => item.className === 'carve-live-delete' || item.className === 'carve-live-insert'), [], source)
+  }
 })
 
 test('a pair whose only arrow sits inside a code span is a strikethrough', () => {
   const source = '{~a `x~>y` b~}'
   const shown = livePresentations(source, [{ from: source.length, to: source.length }])
   assert.deepEqual(shown.filter((item) => item.className === 'carve-live-delete' || item.className === 'carve-live-insert'), [])
-})
-
-test('an empty half keeps the other half addressable', () => {
-  for (const [source, marks] of [
-    ['{~~>new~}', [['carve-live-insert', 'new']]],
-    ['{~old~>~}', [['carve-live-delete', 'old']]],
-  ]) {
-    const shown = livePresentations(source, [{ from: source.length, to: source.length }])
-    assert.deepEqual(
-      shown.filter((item) => item.kind === 'mark' && item.from !== item.to).map((item) => [item.className, source.slice(item.from, item.to)]),
-      marks,
-      source,
-    )
-  }
 })
 
 function applyEdit(source, edit) {
@@ -412,15 +393,17 @@ function applyEdit(source, edit) {
 }
 
 test('Backspace at a task text removes box and bullet; the text becomes a paragraph of its own', () => {
+  // A task item carries the class `task` and `list-style: none` in 0.2 (C2-H-032).
   const cases = [
     // [source, caret before, expected source, expected html]
     ['- [ ] alpha\n- [ ] beta\n- [ ] gamma\n', 'beta', '- [ ] alpha\n\nbeta\n\n- [ ] gamma\n',
-      '<ul class="task-list">\n  <li><input type="checkbox" disabled aria-label="alpha"> alpha</li>\n</ul>\n<p>beta</p>\n<ul class="task-list">\n  <li><input type="checkbox" disabled aria-label="gamma"> gamma</li>\n</ul>'],
+      '<ul class="task-list">\n  <li class="task" style="list-style: none"><input type="checkbox" disabled aria-label="alpha"> alpha</li>\n</ul>\n<p>beta</p>\n<ul class="task-list">\n  <li class="task" style="list-style: none"><input type="checkbox" disabled aria-label="gamma"> gamma</li>\n</ul>'],
     ['- [x] alpha\n', 'alpha', 'alpha\n', '<p>alpha</p>'],
     ['Intro\n\n- [ ] alpha\n- [ ] beta\n', 'alpha', 'Intro\n\nalpha\n\n- [ ] beta\n', null],
-    ['- a\n  - [ ] child\n', 'child', '- a\n\n  child\n', '<ul>\n  <li><p>a</p>\n    <p>child</p>\n  </li>\n</ul>'],
+    // A list with one item is tight in 0.2 (C2-B-062).
+    ['- a\n  - [ ] child\n', 'child', '- a\n\n  child\n', '<ul>\n  <li>a\n    <p>child</p>\n  </li>\n</ul>'],
     ['> - [ ] a\n> - [ ] b\n', 'b', '> - [ ] a\n>\n> b\n', null],
-    ['- [ ] first\n\n  second\n- [ ] next\n', 'first', 'first\n\n  second\n\n- [ ] next\n', '<p>first</p>\n<p>second</p>\n<ul class="task-list">\n  <li><input type="checkbox" disabled aria-label="next"> next</li>\n</ul>'],
+    ['- [ ] first\n\n  second\n- [ ] next\n', 'first', 'first\n\n  second\n\n- [ ] next\n', '<p>first</p>\n<p>second</p>\n<ul class="task-list">\n  <li class="task" style="list-style: none"><input type="checkbox" disabled aria-label="next"> next</li>\n</ul>'],
   ]
   for (const [source, word, expected, html] of cases) {
     const head = source.indexOf(word)

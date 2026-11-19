@@ -12,7 +12,7 @@
  * vault-relative and reaches the vault through the gateway, so the process
  * working directory is not merely rejected - it is unreachable.
  */
-import { includeDependencies, parseWithDiagnostics, render, type Diagnostic, type DocumentNode, type IncludeDependency, type IncludeRequest, type RenderOptions } from '@markup-carve/carve'
+import { includeDependencies, parseWithDiagnostics, render, renderWithDocumentTransforms, type Diagnostic, type DocumentNode, type DocumentTransform, type IncludeDependency, type IncludeRequest, type RenderOptions } from '@markup-carve/carve'
 import { byteToUtf16 } from './engine.js'
 import { ORIGIN_ATTRIBUTE, RENDER_OPTIONS, isFolderRelativeDestination, rewriteWikiSyntax } from './render.js'
 
@@ -83,6 +83,8 @@ export interface PreviewExpansionOptions {
    * default rather than extending it would turn it back on by omission.
    */
   renderOptions?: PreviewRenderOptions
+  /** Document transforms (C2-X-053) run on the expanded tree before it renders, as `renderWithDocumentTransforms` runs them. */
+  transforms?: readonly DocumentTransform[]
 }
 
 /** Render options a preview may carry: everything but raw HTML and the include resolver. */
@@ -324,5 +326,7 @@ export async function renderCarveWithIncludes(source: string, options: PreviewEx
   const expansion = await expandForPreview(source, options)
   const renderOptions: PreviewRenderOptions = options.renderOptions ?? {}
   stampIncludeOrigins(expansion.doc)
-  return { ...expansion, html: render(expansion.doc, { ...renderOptions, ...RENDER_OPTIONS }) }
+  const finalOptions = { ...renderOptions, ...RENDER_OPTIONS }
+  const html = options.transforms?.length ? renderWithDocumentTransforms(expansion.doc, options.transforms, finalOptions).html : render(expansion.doc, finalOptions)
+  return { ...expansion, html }
 }

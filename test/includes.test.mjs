@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IncludeCache, MAX_CACHE_ENTRIES, classifyDiagnostics, expandForPreview, renderCarveWithIncludes, resolveVaultPath } from '../dist-test/includes.js'
 import { ORIGIN_ATTRIBUTE } from '../dist-test/render.js'
-import { render as carveToHtml } from '@markup-carve/carve'
+import { render as carveToHtml, renderWithDocumentTransforms, tabsExtensions } from '@markup-carve/carve'
 
 // The 0.2 parse returns the resolved tree; there is no separate resolve step.
 const resolveDocument = (document) => document
@@ -312,44 +312,31 @@ test('an origin a block in the root document wrote itself does not survive', asy
   assert.doesNotMatch(result.html, /elsewhere.crv/)
 })
 
-test('the expanded path runs the same composition the plain path runs', { skip: 'Carve 0.2 extensions are provisional; document transforms (D3/D4) wait on markup-carve/carve#6070' }, async () => {
-  // `renderHtml` is only the last step of it: the extension transforms and the
-  // profile pass are skipped, so an expanded document would silently render
-  // with less applied to it than an unexpanded one. Today both paths read one
-  // options object with neither configured, which is why the divergence is
-  // invisible - so the lever is supplied here rather than waited for.
+test('the expanded path runs the same composition the plain path runs', async () => {
+  // 0.1 `beforeRender` extensions are 0.2 document transforms (C2-X-053 to C2-X-055).
   const stamp = {
     name: 'stamp',
-    beforeRender(doc) {
-      doc.children.unshift({ type: 'paragraph', children: [{ type: 'text', value: 'STAMPED' }] })
-      return doc
+    transform(doc) {
+      return { ...doc, children: [{ type: 'paragraph', children: [{ type: 'text', value: 'STAMPED' }] }, ...doc.children] }
     },
   }
-  const source = '# Title\n\nbody\n'
-  const options = { rawHtml: false, extensions: [stamp] }
+  const source = '= Title\n\nbody\n'
+  const options = { rawHtml: false }
   const { gateway } = vault({})
-  const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options })
+  const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options, transforms: [stamp] })
   assert.match(result.html, /STAMPED/)
-  assert.equal(result.html, carveToHtml(source, options))
+  assert.equal(result.html, renderWithDocumentTransforms(source, [stamp], options).html)
 })
 
-test('a parse-stage extension reaches the parse the expansion runs', { skip: 'Carve 0.2 extensions are provisional; an inline matcher of the 0.1 shape has no 0.2 registration until markup-carve/carve#6070' }, async () => {
-  // `matchInline` has already had its chance by the time the renderer sees the
-  // extension, so handing it only to `renderDocument` leaves its own syntax as
-  // ordinary text. carve-js#1693 is the remaining half: a CHILD is still
-  // parsed without it, so the syntax applies to the parent only.
-  const atat = {
-    name: 'atat',
-    matchInline(text, pos) {
-      if (!text.startsWith('@@', pos)) return null
-      const end = text.indexOf('@@', pos + 2)
-      return end === -1 ? null : { node: { type: 'code', value: text.slice(pos + 2, end) }, end: end + 2 }
-    },
-  }
+test('a parse-stage extension reaches the parse the expansion runs', async () => {
+  // A 0.2 extension claims its syntax at parse (spec/0.2/extensions.md); the
+  // standard tabs extension stands in for the 0.1 inline matcher.
+  const source = ':::: tabs\n::: tab "One"\nA\n:::\n::::\n'
   const { gateway } = vault({})
-  const options = { rawHtml: false, extensions: [atat] }
-  const result = await renderCarveWithIncludes('say @@hi@@ now\n', { sourcePath: 'root.crv', gateway, renderOptions: options })
-  assert.match(result.html, /<code>hi<\/code>/)
+  const options = { rawHtml: false, extensions: tabsExtensions }
+  const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options })
+  assert.equal(result.html, carveToHtml(source, options))
+  assert.notEqual(result.html, carveToHtml(source, { rawHtml: false }))
 })
 
 test('the heading-id policy is the one the caller configured', async () => {

@@ -84,11 +84,14 @@ function taskBox(source: string, node: EditorMappedNode, children: readonly Edit
   const marker = source.slice(node.start, content.start)
   const task = /^[-*] [ \t]*\[([ xX_>?/!-])\]( [ \t]*)$/.exec(marker)
   if (task) return { state: task[1]!, hideEnd: content.start, content }
-  const pending = /^\[([ xX_>?/!-])\]$/.exec(source.slice(content.start, content.end))
+  // A 0.2 paragraph range keeps the item's trailing blanks.
+  const text = source.slice(content.start, content.end).replace(/[ \t]+$/, '')
+  const pending = /^\[([ xX_>?/!-])\]$/.exec(text)
   // Only a box and, at most, nested lists: a later paragraph makes it ordinary item text.
   if (!pending || !/^[-*] [ \t]*$/.test(marker) || children!.some((child) => child !== content && child.type !== 'list')) return null
-  const blank = /^[ \t]*/.exec(source.slice(content.end))![0]
-  return { state: pending[1]!, hideEnd: content.end + blank.length, content: null }
+  const textEnd = content.start + text.length
+  const blank = /^[ \t]*/.exec(source.slice(textEnd))![0]
+  return { state: pending[1]!, hideEnd: textEnd + blank.length, content: null }
 }
 
 function childrenByParent(nodes: readonly EditorMappedNode[]): Map<string, EditorMappedNode[]> {
@@ -116,6 +119,36 @@ export function liveTaskMarkers(source: string, mapped?: readonly EditorMappedNo
     if (box) markers.push({ from: node.start, to: box.hideEnd, itemEnd: node.end, content: box.content })
   }
   return markers
+}
+
+/** The trimmed cell texts of one table source line, split at pipes outside code spans. */
+function tableLineCells(source: string, lineStart: number, lineEnd: number): { start: number; end: number }[] {
+  const line = source.slice(lineStart, lineEnd)
+  const lead = /^[ \t]*(?:\+[ \t]*\|?|\|=?)/.exec(line)
+  if (!lead) return []
+  const spans: { start: number; end: number }[] = []
+  let cellStart = lead[0].length
+  const close = (at: number): void => {
+    const text = line.slice(cellStart, at)
+    const start = cellStart + (text.length - text.trimStart().length)
+    const end = cellStart + text.trimEnd().length
+    if (start < end) spans.push({ start: lineStart + start, end: lineStart + end })
+  }
+  for (let index = cellStart; index < line.length; index++) {
+    const char = line[index]
+    if (char === '\\') { index++; continue }
+    if (char === '`') {
+      const run = /^`+/.exec(line.slice(index))![0]
+      const closer = line.indexOf(run, index + run.length)
+      if (closer > 0) index = closer + run.length - 1
+      continue
+    }
+    if (char !== '|') continue
+    close(index)
+    cellStart = index + 1 + (line[index + 1] === '=' ? 1 : 0)
+  }
+  close(line.length)
+  return spans
 }
 
 /** Semantic presentation derived from carve-js's document-space source map. */
@@ -174,10 +207,13 @@ export function livePresentations(
       continue
     }
     if (node.type === 'heading') {
-      const marker = /^(#{1,6})[ \t]+/.exec(authored)
+      // The range starts at the attribute lines; `=` is the 0.2 marker and `#` is accepted (C2-B-151, C2-B-152).
+      const lastAttribute = node.tokens.filter((token) => token.block).at(-1)
+      const lineStart = lastAttribute ? source.indexOf('\n', lastAttribute.end) + 1 : node.start
+      const marker = /^(#{1,6}|={1,6})[ \t]+/.exec(source.slice(lineStart, node.end))
       if (marker) {
-        presentations.push({ kind: 'heading', from: node.start, to: node.end, level: marker[1]!.length })
-        presentations.push({ kind: 'hide', from: node.start, to: node.start + marker[0].length })
+        presentations.push({ kind: 'heading', from: lineStart, to: node.end, level: marker[1]!.length })
+        presentations.push({ kind: 'hide', from: lineStart, to: lineStart + marker[0].length })
       }
       continue
     }
@@ -208,34 +244,31 @@ export function livePresentations(
       presentations.push({ kind: 'hide', from: text.end, to: node.end })
       continue
     }
-    if (node.type === 'table_row') {
-      const cells = byParent.get(`${node.path}/cells`)?.filter((candidate) => candidate.type === 'table_cell') ?? []
-      if (!cells.length) {
-        // A cell spanning continuation lines has no source range in the AST, so
-        // the editor map omits its table_cell node. Its text still has ranges.
-        const content = nodes.filter((candidate) => candidate.path.startsWith(`${node.path}/cells/`)
-          && candidate.type !== 'cell_wrap' && candidate.start < candidate.end
-          && !byParent.has(candidate.path))
-        if (!content.length) continue
-        const header = /^\|=/.test(authored)
-        for (let lineStart = node.start; lineStart < node.end;) {
-          const breakAt = source.indexOf('\n', lineStart)
-          const lineEnd = breakAt < 0 || breakAt >= node.end ? node.end : breakAt
-          const spans = content.filter((candidate) => candidate.start >= lineStart && candidate.end <= lineEnd).sort((a, b) => a.start - b.start)
-          if (spans.length) {
-            presentations.push({ kind: 'line', at: lineStart, className: 'carve-live-table-row' })
-            let cursor = lineStart
-            for (const span of spans) {
-              if (cursor < span.start) presentations.push({ kind: 'hide', from: cursor, to: span.start })
-              presentations.push({ kind: 'mark', from: span.start, to: span.end, className: header ? 'carve-live-table-header' : 'carve-live-table-cell' })
-              cursor = span.end
-            }
-            if (cursor < lineEnd) presentations.push({ kind: 'hide', from: cursor, to: lineEnd })
+    if (node.type === 'table_head' || node.type === 'table_body' || node.type === 'table_foot') {
+      // A row with a cell spanning continuation lines has no source range in the
+      // tree, nor has text joined across them, so its source lines split at their pipes.
+      const rows = byParent.get(`${node.path}/children`)?.filter((candidate) => candidate.type === 'table_row') ?? []
+      for (let lineStart = node.start; lineStart < node.end;) {
+        const breakAt = source.indexOf('\n', lineStart)
+        const lineEnd = breakAt < 0 || breakAt >= node.end ? node.end : breakAt
+        const spans = rows.some((row) => row.start <= lineStart && lineStart < row.end) ? [] : tableLineCells(source, lineStart, lineEnd)
+        if (spans.length && !active({ start: lineStart, end: lineEnd + 1 }, selections)) {
+          presentations.push({ kind: 'line', at: lineStart, className: 'carve-live-table-row' })
+          let cursor = lineStart
+          for (const span of spans) {
+            if (cursor < span.start) presentations.push({ kind: 'hide', from: cursor, to: span.start })
+            presentations.push({ kind: 'mark', from: span.start, to: span.end, className: node.type === 'table_head' ? 'carve-live-table-header' : 'carve-live-table-cell' })
+            cursor = span.end
           }
-          lineStart = lineEnd + 1
-        }
-        continue
+          if (cursor < lineEnd) presentations.push({ kind: 'hide', from: cursor, to: lineEnd })
+        } else if (spans.length) presentations.push({ kind: 'line', at: lineStart, className: 'carve-live-table-row' })
+        lineStart = lineEnd + 1
       }
+      continue
+    }
+    if (node.type === 'table_row') {
+      const cells = byParent.get(`${node.path}/children`)?.filter((candidate) => candidate.type === 'table_cell') ?? []
+      if (!cells.length) continue
       presentations.push({ kind: 'line', at: node.start, className: 'carve-live-table-row' })
       let cursor = node.start
       for (const cell of cells) {
@@ -243,7 +276,7 @@ export function livePresentations(
         const text = textBounds(cell)
         if (text) {
           if (cell.start < text.start) presentations.push({ kind: 'hide', from: cell.start, to: text.start })
-          presentations.push({ kind: 'mark', from: text.start, to: text.end, className: source.slice(cell.start, text.start).includes('=') ? 'carve-live-table-header' : 'carve-live-table-cell' })
+          presentations.push({ kind: 'mark', from: text.start, to: text.end, className: cell.node.header === true ? 'carve-live-table-header' : 'carve-live-table-cell' })
           if (text.end < cell.end) presentations.push({ kind: 'hide', from: text.end, to: cell.end })
         }
         cursor = cell.end
@@ -299,6 +332,17 @@ export function livePresentations(
       const caption = textBounds({ ...node, path: `${node.path}/caption` })
       if (target && caption && target.end < caption.start) {
         presentations.push({ kind: 'hide', from: target.end, to: caption.start })
+        presentations.push({ kind: 'mark', from: caption.start, to: caption.end, className: 'carve-live-caption' })
+      }
+      continue
+    }
+    if (node.type === 'caption' && node.path.endsWith('/caption')) {
+      // A 0.2 image paragraph holds its caption (C2-H-020); 0.1 wrapped both in a figure.
+      const owner = node.path.slice(0, -'/caption'.length)
+      const image = byParent.get(`${owner}/children`)?.find((candidate) => candidate.type === 'image')
+      const caption = textBounds(node)
+      if (image && caption && image.end < caption.start) {
+        presentations.push({ kind: 'hide', from: image.end, to: caption.start })
         presentations.push({ kind: 'mark', from: caption.start, to: caption.end, className: 'carve-live-caption' })
       }
       continue
