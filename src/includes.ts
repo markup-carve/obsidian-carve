@@ -292,7 +292,12 @@ export function stampIncludeOrigins(node: unknown, parentFile?: string): void {
     // An authored attribute of this name never survives. The origin states
     // where the engine says the node came from; a document does not get to
     // assert it and redirect where a click lands.
-    if (record.attrs?.keyValues) record.attrs.keyValues = record.attrs.keyValues.filter(([key]) => key !== ORIGIN_ATTRIBUTE)
+    if (record.attrs?.keyValues) {
+      record.attrs.keyValues = record.attrs.keyValues.filter(([key]) => key !== ORIGIN_ATTRIBUTE)
+      // A 0.2 tree refuses an empty pair list and empty attrs (C2-A-032).
+      if (record.attrs.keyValues.length === 0) delete record.attrs.keyValues
+      if (Object.keys(record.attrs).length === 0) delete record.attrs
+    }
     const rewritten = record.attrs?.classes?.some((name) => REBASED_BY_REWRITE.includes(name)) ?? false
     // A link carries the file its DESTINATION is relative to. Any other node
     // carries it only where an included region begins - the block whose file

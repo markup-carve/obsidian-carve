@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+- The plugin runs on Carve 0.2: carve-js, carve-grammars and carve-lsp are pinned to their `next2` commits. Vault documents are read as Carve 0.2 reads them; `spec/0.2/UPGRADING.md` in the Carve repository lists the changes.
+- An include directive inside a sentence is text in Carve 0.2, so the reading view no longer expands it and the editor no longer offers to open it.
+- Flattening keeps an id that two files define in both places, since Carve 0.2 renames no colliding ids.
+
 ## 0.1.7
 
 The plugin follows the Carve 0.1.14 wave through carve-js 0.1.17, carve-grammars 0.1.23 and carve-lsp 0.1.16, and the visual editor keeps every frontmatter opener the engine accepts.
