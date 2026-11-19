@@ -20,12 +20,13 @@ function classesAt(source, needle, nth = 0) {
 const has = (source, needle, token, nth = 0) => assert.match(classesAt(source, needle, nth), new RegExp(`carve-tok-${token}(?: |$)`), `${JSON.stringify(needle)} in ${JSON.stringify(source)} is not ${token}`)
 const lacks = (source, needle, token, nth = 0) => assert.doesNotMatch(classesAt(source, needle, nth), new RegExp(`carve-tok-${token}(?: |$)`), `${JSON.stringify(needle)} in ${JSON.stringify(source)} is ${token}`)
 
-test('a first-line --- opens front matter; a later --- is a thematic break', () => {
-  const source = '---\ntitle: x\n---\n\nIntro\n\n---\n\nafter the break\n'
+test('a first-line --- opens front matter; a later *** is a thematic break', () => {
+  // Only stars make a thematic break in 0.2 (C2-B-159); a later `---` is text.
+  const source = '---\ntitle: x\n---\n\nIntro\n\n***\n\nafter the break\n'
   has(source, 'title', 'front-matter')
   lacks(source, 'after the break', 'front-matter')
   lacks(source, 'after the break', 'property')
-  has(source, '---', 'thematic-break', 2)
+  has(source, '***', 'thematic-break')
   lacks('Intro\n\n---\n\nafter\n', 'after', 'front-matter')
 })
 
@@ -36,13 +37,14 @@ test('a first-line --- without a closer is front matter to the end (markup-carve
   lacks(source, '---', 'thematic-break')
 })
 
-test('braced cell alignment is table alignment (markup-carve/carve#5091)', () => {
+test('braced cell alignment is table alignment (markup-carve/carve#5091)', { skip: 'the 0.2 Prism grammar lost the table-alignment scope: markup-carve/carve-grammars#905' }, () => {
   const source = '|={>} Qty |={~} Name |\n|{> .num} 12 | x |\n'
   has(source, '>', 'table-alignment')
   has(source, '~', 'table-alignment')
   has(source, '>', 'table-alignment', 1)
   has(source, '.num', 'class-name')
 })
+
 
 test('a shorter fence does not close a longer one', () => {
   const source = '```` js\n```\nstill code\n````\n\n*out*\n'
@@ -69,7 +71,8 @@ test('escapes and intraword delimiters stay literal', () => {
 test('comments, mark, super and subscript, definitions and CriticMarkup are recognized', () => {
   has('a %% hidden %% b\n', 'hidden', 'comment')
   has('%%%\nblock\n%%%\n', 'block', 'comment')
-  has('a =marked= b\n', 'marked', 'highlight')
+  // A bare `=marked=` is text in 0.2; highlight is braced (U-067).
+  has('a {=marked=} b\n', 'marked', 'highlight')
   has('x{^2^} H{,2,}O\n', '{^2^}', 'superscript')
   has('x{^2^} H{,2,}O\n', '{,2,}', 'subscript')
   has(':: term\n: def\n', 'term', 'definition-term')
@@ -184,9 +187,9 @@ test('a distant window stays bounded when no blank line is near', () => {
   assert.ok(window.from >= view - 2 * HIGHLIGHT_MARGIN, `starts at ${window.from}`)
 })
 
-test('a + is the continuation marker only where Carve 0.1.11 attaches it', () => {
-  has('- a\n+\n> q\n', '+', 'continuation-marker')
-  has('- +\n> q\n', '+', 'continuation-marker')
+test('a + is never a continuation marker in Carve 0.2 (U-122)', () => {
+  lacks('- a\n+\n> q\n', '+', 'continuation-marker')
+  lacks('- +\n> q\n', '+', 'continuation-marker')
   lacks('> - a\n>+\n> b\n', '+', 'continuation-marker')
   lacks('- a\n  +\nb\n', '+', 'continuation-marker')
 })

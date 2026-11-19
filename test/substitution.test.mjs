@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { substitutionHalves } from '../dist-test/substitution.js'
 
-test('the halves split at the first top-level arrow', () => {
-  assert.deepEqual(substitutionHalves('{~old~>new~}'), { old: 'old', new: 'new' })
-  assert.deepEqual(substitutionHalves('{~a~>b~>c~}'), { old: 'a', new: 'b~>c' })
-  assert.deepEqual(substitutionHalves('{~ *o* ~> _n_ ~}'), { old: ' *o* ', new: ' _n_ ' })
+test('a substitution arrow is strikethrough text in 0.2, so it yields no halves (U-069)', () => {
+  assert.equal(substitutionHalves('{~old~>new~}'), null)
+  assert.equal(substitutionHalves('{~a~>b~>c~}'), null)
+  assert.equal(substitutionHalves('{~ *o* ~> _n_ ~}'), null)
 })
 
 test('an arrow the engine does not read as a split point yields no halves', () => {
@@ -14,7 +14,7 @@ test('an arrow the engine does not read as a split point yields no halves', () =
   assert.equal(substitutionHalves('{~nothing~}'), null)
 })
 
-test('an empty half comes back empty rather than swallowing the other', () => {
-  assert.deepEqual(substitutionHalves('{~~>new~}'), { old: '', new: 'new' })
-  assert.deepEqual(substitutionHalves('{~old~>~}'), { old: 'old', new: '' })
+test('an empty half is no substitution either in 0.2 (U-069)', () => {
+  assert.equal(substitutionHalves('{~~>new~}'), null)
+  assert.equal(substitutionHalves('{~old~>~}'), null)
 })

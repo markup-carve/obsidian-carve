@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { carveToHtml, renderHtml, resolve } from '@markup-carve/carve'
+import { render as carveToHtml, render as renderHtml } from '@markup-carve/carve'
+
+// The 0.2 parse returns the resolved tree; there is no separate resolve step.
+const resolve = (document) => document
 import { expandForPreview, renderCarveWithIncludes } from '../dist-test/includes.js'
 import { renderCarve as renderCarveSource } from '../dist-test/render.js'
 import { MAX_EXPORT_CANDIDATES, flattenDocument, flattenSummary, flattenedPath } from '../dist-test/flatten.js'
@@ -21,7 +24,8 @@ function vault(files) {
 test('flattening inlines the child and leaves no directive behind', async () => {
   const gateway = vault({ 'book/child.crv': '# Child heading\n' })
   const result = await flattenDocument('Before\n\n{{ child.crv }}\n', { sourcePath: 'book/root.crv', gateway })
-  assert.match(result.text, /^# Child heading$/m)
+  // The 0.2 writer spells a heading with `=` (C2-W-035).
+  assert.match(result.text, /^= Child heading$/m)
   assert.doesNotMatch(result.text, /\{\{/)
   assert.deepEqual(result.diagnostics, [])
   assert.equal(result.renamed, 0)
@@ -43,16 +47,16 @@ test('the flattened document renders like the expanded original', async () => {
   assert.equal(carveToHtml(flattened.text), renderHtml(resolve(expanded.doc)))
 })
 
-test('a colliding heading id is renamed into the output and counted', async () => {
+test('a colliding heading id is kept in both files, as 0.2 renames nothing (C2-N-058)', async () => {
   // The attribute block sits on its OWN LINE on purpose: written trailing
   // (`# Child intro {#intro}`) Carve keeps it as literal text and the heading
   // carries no id at all, so there would be no collision and nothing to assert.
+  // An id in two files is a duplicate that lint reports, not an include rename.
   const gateway = vault({ 'child.crv': '{#intro}\n# Child intro\n' })
   const result = await flattenDocument('{#intro}\n# Root intro\n\n{{ child.crv }}\n', { sourcePath: 'root.crv', gateway })
-  assert.match(result.text, /^\{#intro-2\}$/m, 'the rename is written into the source, not only reported')
-  assert.equal(result.renamed, 1)
-  assert.equal(result.diagnostics.length, 1)
-  assert.equal(result.diagnostics[0].rule, 'include-id-rename')
+  assert.equal(result.text.match(/^\{#intro\}$/gm).length, 2)
+  assert.equal(result.renamed, 0)
+  assert.equal(result.diagnostics.length, 0)
 })
 
 test("the author's wiki syntax survives flattening verbatim", async () => {

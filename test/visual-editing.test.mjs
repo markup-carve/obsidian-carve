@@ -6,7 +6,7 @@ const window = new Window()
 Object.assign(globalThis, { document: window.document, Element: window.Element, HTMLLIElement: window.HTMLLIElement, HTMLInputElement: window.HTMLInputElement })
 const { applyVisualInputRule, backspaceVisualListItem, normalizeVisualTaskCaret, visualTaskCaretKey, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, wrapVisualSelection } = await import('../dist-test/visual-editing.js')
 const { sourceToVisualDocument, visualHtmlToSource } = await import('../dist-test/wysiwyg.js')
-const { carveToHtml } = await import('@markup-carve/carve')
+const { render: carveToHtml } = await import('@markup-carve/carve')
 
 function selectTextNode(element, offset) {
   const range = document.createRange(); range.setStart(element.firstChild, offset); range.collapse(true)

@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IncludeCache, MAX_CACHE_ENTRIES, classifyDiagnostics, expandForPreview, renderCarveWithIncludes, resolveVaultPath } from '../dist-test/includes.js'
 import { ORIGIN_ATTRIBUTE } from '../dist-test/render.js'
-import { carveToHtml, resolve as resolveDocument } from '@markup-carve/carve'
+import { render as carveToHtml } from '@markup-carve/carve'
+
+// The 0.2 parse returns the resolved tree; there is no separate resolve step.
+const resolveDocument = (document) => document
 
 /** A vault of `path -> { source, mtime }`, counting reads. */
 function vault(files) {
@@ -322,7 +325,7 @@ test('the expanded path runs the same composition the plain path runs', async ()
     },
   }
   const source = '# Title\n\nbody\n'
-  const options = { allowRawHtml: false, extensions: [stamp] }
+  const options = { rawHtml: false, extensions: [stamp] }
   const { gateway } = vault({})
   const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options })
   assert.match(result.html, /STAMPED/)
@@ -343,7 +346,7 @@ test('a parse-stage extension reaches the parse the expansion runs', async () =>
     },
   }
   const { gateway } = vault({})
-  const options = { allowRawHtml: false, extensions: [atat] }
+  const options = { rawHtml: false, extensions: [atat] }
   const result = await renderCarveWithIncludes('say @@hi@@ now\n', { sourcePath: 'root.crv', gateway, renderOptions: options })
   assert.match(result.html, /<code>hi<\/code>/)
 })
@@ -356,7 +359,7 @@ test('the heading-id policy is the one the caller configured', async () => {
   // collision the first resolve's ids are the ones that stick.
   const source = '# Big Title\n\n# Big Title\n'
   const { gateway } = vault({})
-  const options = { allowRawHtml: false, lowercaseHeadingIds: true }
+  const options = { rawHtml: false, lowercaseHeadingIds: true }
   const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options })
   assert.equal(result.html, carveToHtml(source, options))
 })
@@ -366,7 +369,7 @@ test('the preview renders HTML whatever target a caller asks for', async () => {
   // `target` so the question cannot be asked in TypeScript; this is the same
   // guarantee for a caller that is not type-checked.
   const { gateway } = vault({})
-  const result = await renderCarveWithIncludes('# T\n\nbody\n', { sourcePath: 'root.crv', gateway, renderOptions: { allowRawHtml: false, target: 'markdown' } })
+  const result = await renderCarveWithIncludes('# T\n\nbody\n', { sourcePath: 'root.crv', gateway, renderOptions: { rawHtml: false, target: 'markdown' } })
   assert.match(result.html, /<h1>T<\/h1>/)
 })
 
@@ -383,7 +386,7 @@ test('configuring an unrelated option does not turn raw HTML back on', async () 
 
 test('raw HTML stays off even when a caller asks for it', async () => {
   const { gateway } = vault({})
-  const result = await renderCarveWithIncludes(RAW_HTML_SOURCE, { sourcePath: 'root.crv', gateway, renderOptions: { allowRawHtml: true } })
+  const result = await renderCarveWithIncludes(RAW_HTML_SOURCE, { sourcePath: 'root.crv', gateway, renderOptions: { rawHtml: true } })
   assert.doesNotMatch(result.html, /<b>x<\/b>/)
 })
 

@@ -36,6 +36,13 @@ function collectSpans(node: unknown, toUtf16: (offset: number) => number, text: 
   }
 }
 
+// A 0.2 tree folds a backslash escape into its text node, so `\\[[B]]` is checked in the source.
+function escaped(source: string, at: number): boolean {
+  let slashes = 0
+  while (at - slashes - 1 >= 0 && source[at - slashes - 1] === '\\') slashes++
+  return slashes % 2 === 1
+}
+
 /**
  * Every wikilink in `source` that the engine reads as plain text.
  *
@@ -65,7 +72,7 @@ export function wikilinkMatches(source: string, document?: DocumentNode): WikiMa
     const inText = t < text.length && (text[t] as Span).from <= start
     let touchesVerbatim = false
     for (let index = v; index < verbatim.length && (verbatim[index] as Span).from < end; index++) if ((verbatim[index] as Span).to > start) { touchesVerbatim = true; break }
-    if (!inText || touchesVerbatim) continue
+    if (!inText || touchesVerbatim || escaped(source, start)) continue
     matches.push({ start, end, embed: match[1] === '!', target: match[2] as string, fragment: match[3] ?? '', alias: match[4] ?? '' })
   }
   return matches

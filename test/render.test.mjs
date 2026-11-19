@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { carveToHtml } from '@markup-carve/carve'
+import { render as carveToHtml } from '@markup-carve/carve'
 import { extractMetadata, withCrvExtension } from '../dist-test/metadata.js'
 import { renderCarve, rewriteWikiSyntax, safeDecodeURIComponent } from '../dist-test/render.js'
 import { appendOpaqueConstruct, editOpaqueWithPrompts, normalizeVisualHtml, sourceToVisualDocument, updateOpaqueConstruct, visualHtmlToSource } from '../dist-test/wysiwyg.js'
 
 test('the renderer produces Obsidian-ready HTML', () => {
-  const html = carveToHtml('# Human markup\n\nA *strong* idea and [link](https://example.com).', { allowRawHtml: false })
+  const html = carveToHtml('# Human markup\n\nA *strong* idea and [link](https://example.com).', { rawHtml: false })
   assert.match(html, /<h1[^>]*>Human markup<\/h1>/)
   assert.match(html, /<strong>strong<\/strong>/)
   assert.match(html, /href="https:\/\/example.com"/)

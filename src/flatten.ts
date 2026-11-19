@@ -142,7 +142,8 @@ type TreeNode = { type: string; children?: TreeNode[] } & Record<string, unknown
 function spliced(nodes: readonly TreeNode[]): TreeNode[] {
   const result: TreeNode[] = []
   for (const node of nodes) {
-    if (node.type === 'include') result.push(...spliced((node.children ?? []).filter((child) => child.type !== 'frontmatter')))
+    // An include that was not read has no children and stays its directive.
+    if (node.type === 'include' && node.children !== undefined) result.push(...spliced(node.children.filter((child) => child.type !== 'frontmatter')))
     else result.push(withSplicedSlots(node))
   }
   return result

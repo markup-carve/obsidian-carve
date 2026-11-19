@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Window } from 'happy-dom'
-import { carveToHtml } from '@markup-carve/carve'
+import { render as carveToHtml } from '@markup-carve/carve'
 import { LIVE_PREVIEW_IDLE_MS, LIVE_PREVIEW_MAX_SOURCE_LENGTH, LIVE_PREVIEW_WINDOW_MARGIN, LIVE_PREVIEW_WINDOW_THRESHOLD, createCarveLivePreview, livePresentations, livePreviewWindow, nodesInRanges, livePreviewDelay, liveTaskMarkers, taskBackspaceEdit, taskCaretTarget, taskToggle } from '../dist-test/live-preview.js'
 
 test('typed ### heading becomes an H3 presentation outside the cursor', () => {

@@ -35,9 +35,9 @@ test('a directive inside a code span is not offered', () => {
   assert.deepEqual(directiveSites(source).map((site) => site.path), ['live.crv'])
 })
 
-test('a directive written inside a sentence is offered', () => {
-  // The engine expands this one, so the editor offers it too.
-  assert.equal(directiveSiteAt('see {{ one.crv }} here\n', 8).path, 'one.crv')
+test('a directive written inside a sentence is text, so it is not offered (C2-N-002)', () => {
+  // Carve 0.2 has no inline include: the engine never expands this one.
+  assert.equal(directiveSiteAt('see {{ one.crv }} here\n', 8), null)
 })
 
 test('a token the engine does not treat as a directive is not offered', () => {
@@ -73,8 +73,10 @@ test('a missing target says it could not be resolved', () => {
 test('a refused jump is explained in the words the reading view uses', () => {
   // One wording, two surfaces: the diagnostic above the document and the
   // notice the gesture raises have to say the same thing about the same path.
-  const warning = { line: 1, column: 1, rule: 'include-unresolved', message: 'Include "../outside.crv" could not be resolved.', start: 0, end: 1, file: 'root.crv' }
-  const diagnostic = classifyDiagnostics([warning], new Set([directiveKey('root.crv', '../outside.crv')]))[0]
+  // The 0.2 engine reports the refusal itself (C2-N-007 `outside_root`).
+  const source = '{{ ../outside.crv }}\n'
+  const warning = { code: 'include-outside-root', severity: 'warning', channel: 'parse', message: 'Include "../outside.crv" was not expanded: the path leads outside the include root.', range: { startOffset: 0, endOffset: 20 } }
+  const diagnostic = classifyDiagnostics([warning], new Map([[undefined, source]]))[0]
   const outcome = includeNavigation('../outside.crv', 'root.crv', existing())
   assert.equal(outcome.message, diagnostic.message)
   assert.equal(outcome.message, containmentMessage('../outside.crv'))
@@ -93,9 +95,14 @@ test('a cursor inside the fenced copy of a live path offers nothing', () => {
   assert.equal(directiveSiteAt(source, 6), null)
 })
 
-test('a cursor between two adjacent directives belongs to the one it opens', () => {
+test('two directives on one line are text, so neither is offered (C2-N-002)', () => {
   const source = '{{ one.crv }}{{ two.crv }}\n'
-  assert.equal(directiveSiteAt(source, 13).path, 'two.crv')
+  assert.equal(directiveSiteAt(source, 13), null)
+})
+
+test('a cursor at the start of the second of two adjacent directive lines belongs to it', () => {
+  const source = '{{ one.crv }}\n{{ two.crv }}\n'
+  assert.equal(directiveSiteAt(source, 14).path, 'two.crv')
 })
 
 test('a cursor just past the closing braces is still on the directive', () => {
@@ -109,19 +116,19 @@ test('a cursor well past the directive is not', () => {
 })
 
 test('an astral character before a directive does not shift its span', () => {
-  // The engine's spans count CODEPOINTS; a CodeMirror offset counts UTF-16
-  // units. One emoji makes them differ by one unit, which would offer a span
-  // starting inside the preceding character.
-  const source = '\u{1F600}\u{1F600} {{ one.crv }}\n'
+  // The engine's spans count UTF-8 BYTES (C2-A-027); a CodeMirror offset counts
+  // UTF-16 units. A directive is a block line in 0.2 (C2-N-002), so the emoji
+  // sits on the line before it.
+  const source = '\u{1F600}\u{1F600}\n\n{{ one.crv }}\n'
   const site = directiveSiteAt(source, source.indexOf('{{') + 2)
   assert.equal(site.path, 'one.crv')
   assert.equal(source.slice(site.from, site.to), '{{ one.crv }}')
 })
 
 test('a cursor one unit before an astral-shifted directive offers nothing', () => {
-  // Exactly the offset an unconverted codepoint span would start at, so a
-  // directive offered here is one the cursor is not on.
-  const source = '\u{1F600} text {{ one.crv }}\n'
+  // Exactly the offset an unconverted span would start at, so a directive
+  // offered here is one the cursor is not on. A block line in 0.2 (C2-N-002).
+  const source = '\u{1F600} text\n\n{{ one.crv }}\n'
   const start = source.indexOf('{{')
   assert.equal(directiveSiteAt(source, start).path, 'one.crv')
   assert.equal(directiveSiteAt(source, start - 1), null)
