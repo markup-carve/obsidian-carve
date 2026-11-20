@@ -21,9 +21,9 @@
     "@codemirror/lint": "6.9.5",
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.13",
-    "@markup-carve/carve": "github:markup-carve/carve-js#3bf4bc26603a57a5ecfb2c88a0d825c1b799b296",
-    "@markup-carve/carve-grammars": "github:markup-carve/carve-grammars#86e3c3d729e344f2ee29b93547866e184a8b6dc7",
-    "@markup-carve/carve-lsp": "github:markup-carve/carve-lsp#3f883093d74733fefde9302cc97ebaa5df1c51f5",
+    "@markup-carve/carve": "github:markup-carve/carve-js#456e04a9fb0b9e8b4315bade2d4012357235e410",
+    "@markup-carve/carve-grammars": "github:markup-carve/carve-grammars#79511c4ba461cb0696e0400132da9eef414147e0",
+    "@markup-carve/carve-lsp": "github:markup-carve/carve-lsp#ff30661bfe796d0cbd608ee152597afe81db468e",
     "codemirror": "^6.0.2",
     "smol-toml": "1.8.0",
     "yaml": "^2.9.0"
@@ -36,5 +36,8 @@
     "obsidian": "^1.14.4",
     "prismjs": "^1.30.0",
     "typescript": "^5.9.0"
+  },
+  "overrides": {
+    "@markup-carve/carve": "github:markup-carve/carve-js#456e04a9fb0b9e8b4315bade2d4012357235e410"
   }
 }

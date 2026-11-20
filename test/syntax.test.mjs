@@ -37,7 +37,7 @@ test('a first-line --- without a closer is front matter to the end (markup-carve
   lacks(source, '---', 'thematic-break')
 })
 
-test('braced cell alignment is table alignment (markup-carve/carve#5091)', { skip: 'the 0.2 Prism grammar lost the table-alignment scope: markup-carve/carve-grammars#905' }, () => {
+test('braced cell alignment is table alignment (markup-carve/carve#5091)', () => {
   const source = '|={>} Qty |={~} Name |\n|{> .num} 12 | x |\n'
   has(source, '>', 'table-alignment')
   has(source, '~', 'table-alignment')
