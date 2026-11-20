@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { IncludeCache, MAX_CACHE_ENTRIES, classifyDiagnostics, expandForPreview, renderCarveWithIncludes, resolveVaultPath } from '../dist-test/includes.js'
 import { ORIGIN_ATTRIBUTE } from '../dist-test/render.js'
-import { carveToHtml, resolve as resolveDocument } from '@markup-carve/carve'
+import { render as carveToHtml, renderWithDocumentTransforms, tabsExtensions } from '@markup-carve/carve'
+
+// The 0.2 parse returns the resolved tree; there is no separate resolve step.
+const resolveDocument = (document) => document
 
 /** A vault of `path -> { source, mtime }`, counting reads. */
 function vault(files) {
@@ -176,8 +179,9 @@ test('a read that throws is not retried', async () => {
 })
 
 test('an engine warning the relabeler does not recognize is passed through unchanged', () => {
-  const warnings = [{ line: 2, column: 1, rule: 'include-unresolved', message: 'Some future wording.', start: 0, end: 1, file: 'root.crv' }]
-  assert.deepEqual(classifyDiagnostics(warnings, new Set(['x.crv'])), [{ line: 2, column: 1, rule: 'include-unresolved', message: 'Some future wording.', file: 'root.crv' }])
+  // A 0.2 diagnostic carries a byte range rather than a line (C2-T-040), so the line comes from the source.
+  const warnings = [{ code: 'include-not-found', severity: 'warning', channel: 'parse', message: 'Some future wording.', range: { startOffset: 2, endOffset: 3 }, file: 'root.crv' }]
+  assert.deepEqual(classifyDiagnostics(warnings, new Map([['root.crv', 'a\nb\n']])), [{ line: 2, column: 1, rule: 'include-not-found', message: 'Some future wording.', file: 'root.crv' }])
 })
 
 test('a document with no directive is left to the plain render path', async () => {
@@ -309,43 +313,30 @@ test('an origin a block in the root document wrote itself does not survive', asy
 })
 
 test('the expanded path runs the same composition the plain path runs', async () => {
-  // `renderHtml` is only the last step of it: the extension transforms and the
-  // profile pass are skipped, so an expanded document would silently render
-  // with less applied to it than an unexpanded one. Today both paths read one
-  // options object with neither configured, which is why the divergence is
-  // invisible - so the lever is supplied here rather than waited for.
+  // 0.1 `beforeRender` extensions are 0.2 document transforms (C2-X-053 to C2-X-055).
   const stamp = {
     name: 'stamp',
-    beforeRender(doc) {
-      doc.children.unshift({ type: 'paragraph', children: [{ type: 'text', value: 'STAMPED' }] })
-      return doc
+    transform(doc) {
+      return { ...doc, children: [{ type: 'paragraph', children: [{ type: 'text', value: 'STAMPED' }] }, ...doc.children] }
     },
   }
-  const source = '# Title\n\nbody\n'
-  const options = { allowRawHtml: false, extensions: [stamp] }
+  const source = '= Title\n\nbody\n'
+  const options = { rawHtml: false }
   const { gateway } = vault({})
-  const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options })
+  const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options, transforms: [stamp] })
   assert.match(result.html, /STAMPED/)
-  assert.equal(result.html, carveToHtml(source, options))
+  assert.equal(result.html, renderWithDocumentTransforms(source, [stamp], options).html)
 })
 
 test('a parse-stage extension reaches the parse the expansion runs', async () => {
-  // `matchInline` has already had its chance by the time the renderer sees the
-  // extension, so handing it only to `renderDocument` leaves its own syntax as
-  // ordinary text. carve-js#1693 is the remaining half: a CHILD is still
-  // parsed without it, so the syntax applies to the parent only.
-  const atat = {
-    name: 'atat',
-    matchInline(text, pos) {
-      if (!text.startsWith('@@', pos)) return null
-      const end = text.indexOf('@@', pos + 2)
-      return end === -1 ? null : { node: { type: 'code', value: text.slice(pos + 2, end) }, end: end + 2 }
-    },
-  }
+  // A 0.2 extension claims its syntax at parse (spec/0.2/extensions.md); the
+  // standard tabs extension stands in for the 0.1 inline matcher.
+  const source = ':::: tabs\n::: tab "One"\nA\n:::\n::::\n'
   const { gateway } = vault({})
-  const options = { allowRawHtml: false, extensions: [atat] }
-  const result = await renderCarveWithIncludes('say @@hi@@ now\n', { sourcePath: 'root.crv', gateway, renderOptions: options })
-  assert.match(result.html, /<code>hi<\/code>/)
+  const options = { rawHtml: false, extensions: tabsExtensions }
+  const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options })
+  assert.equal(result.html, carveToHtml(source, options))
+  assert.notEqual(result.html, carveToHtml(source, { rawHtml: false }))
 })
 
 test('the heading-id policy is the one the caller configured', async () => {
@@ -356,18 +347,18 @@ test('the heading-id policy is the one the caller configured', async () => {
   // collision the first resolve's ids are the ones that stick.
   const source = '# Big Title\n\n# Big Title\n'
   const { gateway } = vault({})
-  const options = { allowRawHtml: false, lowercaseHeadingIds: true }
+  // `headingIds: 'lower'` is the 0.2 spelling of `lowercaseHeadingIds` (C2-T-005).
+  const options = { rawHtml: false, headingIds: 'lower' }
   const result = await renderCarveWithIncludes(source, { sourcePath: 'root.crv', gateway, renderOptions: options })
   assert.equal(result.html, carveToHtml(source, options))
 })
 
-test('the preview renders HTML whatever target a caller asks for', async () => {
-  // The reading view inserts this as HTML. `PreviewRenderOptions` drops
-  // `target` so the question cannot be asked in TypeScript; this is the same
-  // guarantee for a caller that is not type-checked.
+test('a caller asking the preview for another target is refused, never shown markup', async () => {
+  // The reading view inserts this as HTML. 0.2 `render` has no `target` and
+  // refuses an unknown option before parsing (C2-T-040), so an untyped caller
+  // gets an error rather than Markdown displayed as markup.
   const { gateway } = vault({})
-  const result = await renderCarveWithIncludes('# T\n\nbody\n', { sourcePath: 'root.crv', gateway, renderOptions: { allowRawHtml: false, target: 'markdown' } })
-  assert.match(result.html, /<h1>T<\/h1>/)
+  await assert.rejects(renderCarveWithIncludes('# T\n\nbody\n', { sourcePath: 'root.crv', gateway, renderOptions: { target: 'markdown' } }), { name: 'CarveOptionError', option: 'target' })
 })
 
 const RAW_HTML_SOURCE = 'a `<b>x</b>`{=html} b\n'
@@ -377,13 +368,13 @@ test('configuring an unrelated option does not turn raw HTML back on', async () 
   // them: an object that omits `allowRawHtml` would otherwise re-enable
   // vault-authored HTML by omission.
   const { gateway } = vault({})
-  const result = await renderCarveWithIncludes(RAW_HTML_SOURCE, { sourcePath: 'root.crv', gateway, renderOptions: { lowercaseHeadingIds: true } })
+  const result = await renderCarveWithIncludes(RAW_HTML_SOURCE, { sourcePath: 'root.crv', gateway, renderOptions: { headingIds: 'lower' } })
   assert.doesNotMatch(result.html, /<b>x<\/b>/)
 })
 
 test('raw HTML stays off even when a caller asks for it', async () => {
   const { gateway } = vault({})
-  const result = await renderCarveWithIncludes(RAW_HTML_SOURCE, { sourcePath: 'root.crv', gateway, renderOptions: { allowRawHtml: true } })
+  const result = await renderCarveWithIncludes(RAW_HTML_SOURCE, { sourcePath: 'root.crv', gateway, renderOptions: { rawHtml: true } })
   assert.doesNotMatch(result.html, /<b>x<\/b>/)
 })
 
@@ -401,12 +392,11 @@ test('a block-level include marks the whole region, plain text included', async 
   assert.deepEqual(originElements(result.html), ['p=book/sub/child.crv'])
 })
 
-test('an inline include marks the elements the child produced', async () => {
-  // Not "nothing": the child's content is its own node and carries pos.file,
-  // so anything that renders as an element can hold the attribute.
+test('a directive inside a sentence stays text and marks nothing (C2-N-002)', async () => {
   const { gateway } = vault({ 'book/sub/child.crv': '_stressed_\n' })
   const result = await renderCarveWithIncludes('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
-  assert.deepEqual(originElements(result.html), ['u=book/sub/child.crv'])
+  assert.match(result.html, /Root \{\{ sub\/child\.crv \}\} tail\./)
+  assert.deepEqual(originElements(result.html), [])
 })
 
 /** Every text node as `value|file`, in document order. */
@@ -417,41 +407,17 @@ function textFiles(node, out = []) {
   return out
 }
 
-test("an inline include's plain text is merged into the host's run when it is expanded", async () => {
-  // carve-js#1679 gave the child's text its own node carrying the file.
-  // carve-js#1739 coalesces that run back into the host's, and #1741 keeps the
-  // host's span on the merged result, so the attribution is gone one stage
-  // earlier than it used to be - at expansion rather than at resolution.
+test('a directive inside a sentence is not expanded, so its text stays the host run (C2-N-002)', async () => {
   const { gateway } = vault({ 'book/sub/child.crv': 'inlined text\n' })
   const result = await expandForPreview('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
-  assert.deepEqual(textFiles(result.doc), ['Root inlined text tail.|-'])
+  assert.deepEqual(textFiles(resolveDocument(result.doc)), ['Root {{ sub/child.crv }} tail.|-'])
+  assert.deepEqual(result.watchPaths, [])
 })
 
-test('resolution coalesces that run back into the parent, losing the attribution', async () => {
-  // And the half it was not: the tree that gets RENDERED is the resolved one,
-  // where the three runs are one run again and the file is gone. So the
-  // README's conclusion for plain text holds while its stated reason does not,
-  // and the reason matters - it is why an element-producing child survives.
-  const { gateway } = vault({ 'book/sub/child.crv': 'inlined text\n' })
-  const expanded = await expandForPreview('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
-  assert.deepEqual(textFiles(resolveDocument(expanded.doc)), ['Root inlined text tail.|-'])
-})
-
-test('an inline include contributing only plain text marks nothing in the HTML', async () => {
-  // And this is the real limit, the one the README has to state instead: a
-  // text node is not an element, so there is nothing to carry the attribute
-  // and nothing to jump from.
-  const { gateway } = vault({ 'book/sub/child.crv': 'inlined text\n' })
-  const result = await renderCarveWithIncludes('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
-  assert.match(result.html, /Root inlined text tail\./)
-  assert.deepEqual(originElements(result.html), [])
-})
-
-test('an inline directive naming block content is refused rather than expanded', async () => {
-  // An image on its own line is a block, so the directive stays literal and
-  // says why - it is not a silent case of "the gesture found nothing".
+test('an inline directive naming block content stays literal without a diagnostic (C2-N-002)', async () => {
+  // 0.2 never treats the directive as an include, so there is nothing to refuse.
   const { gateway } = vault({ 'book/sub/child.crv': '![alt](pic.png)\n' })
   const result = await renderCarveWithIncludes('Root {{ sub/child.crv }} tail.\n', { sourcePath: 'book/root.crv', gateway })
   assert.match(result.html, /\{\{ sub\/child\.crv \}\}/)
-  assert.deepEqual(result.diagnostics.map((d) => d.rule), ['include-block-in-inline'])
+  assert.deepEqual(result.diagnostics.map((d) => d.rule), [])
 })

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { carveToHtml } from '@markup-carve/carve'
+import { render as carveToHtml } from '@markup-carve/carve'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { isBareListMarker, previewHoldUpdate, shouldHoldRender } from '../dist-test/preview-hold.js'
 import { listContinuationEdit } from '../dist-test/editor-commands.js'
@@ -51,7 +51,8 @@ test('the render does not hold on a marker inside a code fence', () => {
 })
 
 test('an unclosed fence runs to the end', () => {
-  assert.equal(shouldHoldRender('~~~\nx\ny\n-', 3), false)
+  // A tilde run opens no fence in 0.2 (U-116), so the fence is backticks.
+  assert.equal(shouldHoldRender('```\nx\ny\n-', 3), false)
 })
 
 test('a fence opened on a list-item line still counts', () => {

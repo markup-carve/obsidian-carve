@@ -1,6 +1,6 @@
 import { EditorSelection, Prec, type Extension } from '@codemirror/state'
 import { keymap, type Command, type EditorView } from '@codemirror/view'
-import { parse, type Document, type Position } from '@markup-carve/carve'
+import { parse, type DocumentNode, type Marker, type Position } from '@markup-carve/carve'
 import { BARE_CONTINUATION_MARKER, continuationPrefix, listContinuationEdits, listIndentEdits, type ContinuationEdit } from '@markup-carve/carve-lsp/browser'
 
 export interface FormatEdit {
@@ -198,13 +198,14 @@ interface SourceItem { line: number; end: number; list: SourceList; index: numbe
 interface SourceLists { items: Map<number, SourceItem>; code: Set<number> }
 
 function sourceLists(source: string): SourceLists | null {
-  let doc: Document
+  let doc: DocumentNode
   try { doc = parse(source, { positions: true }) } catch { return null }
   const result: SourceLists = { items: new Map(), code: new Set() }
-  type Node = { type?: unknown; pos?: Position; items?: unknown[]; children?: unknown[]; ordered?: boolean; olType?: string; delim?: string; bulletChar?: string }
+  type Node = { type?: unknown; pos?: Position; children?: unknown[]; marker?: Marker }
   const visitList = (node: Node, parent: SourceItem | null): SourceList => {
-    const list: SourceList = { previous: null, ordered: node.ordered === true, olType: node.olType, delim: node.delim, bulletChar: node.bulletChar, items: [], parent }
-    for (const entry of node.items ?? []) {
+    const marker = node.marker
+    const list: SourceList = { previous: null, ordered: marker?.kind === 'ordered', olType: marker?.style, delim: marker?.delimiter, bulletChar: marker?.char, items: [], parent }
+    for (const entry of node.children ?? []) {
       const itemNode = entry as Node
       if (itemNode.pos?.startLine === undefined || itemNode.pos.endLine === undefined) continue
       const item: SourceItem = { line: itemNode.pos.startLine - 1, end: itemNode.pos.endLine - 1, list, index: list.items.length, childList: null }

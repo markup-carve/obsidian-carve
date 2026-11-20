@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { carveToHtml } from '@markup-carve/carve'
+import { render as carveToHtml } from '@markup-carve/carve'
 import { directiveSites } from '../dist-test/include-navigation.js'
 import { renderCarve } from '../dist-test/render.js'
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
-import { carveToHtml } from '@markup-carve/carve'
+import { render as carveToHtml } from '@markup-carve/carve'
 import { Window } from 'happy-dom'
 
 const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8')
