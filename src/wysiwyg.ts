@@ -2,7 +2,6 @@ import { encodeTree, importDocument, parse } from '@markup-carve/carve'
 import { byteToUtf16, mappedNodes } from './engine.js'
 import { frontmatterOf } from './metadata.js'
 import { renderCarve } from './render.js'
-import { substitutionHalves } from './substitution.js'
 
 export interface VisualDocument {
   frontmatter: string
@@ -17,7 +16,7 @@ export interface VisualDocument {
 
 export interface OpaqueConstruct { token: string; source: string; label: string; kind: string }
 
-const OPAQUE_TYPES = new Set(['admonition', 'div', 'line_block', 'footnote', 'footnote_ref', 'inline_footnote', 'abbreviation_def', 'abbreviation', 'comment', 'insert', 'delete', 'substitution', 'critic_comment', 'raw_inline', 'tag', 'mention', 'math'])
+const OPAQUE_TYPES = new Set(['admonition', 'div', 'line_block', 'footnote', 'footnote_ref', 'inline_footnote', 'abbreviation_def', 'abbreviation', 'comment', 'insert', 'delete', 'critic_comment', 'raw_inline', 'tag', 'mention', 'math'])
 const OPAQUE_BLOCKS = new Set(['admonition', 'div', 'line_block', 'footnote', 'abbreviation_def'])
 export function opaqueBlock(item: Pick<OpaqueConstruct, 'kind' | 'source'>): boolean { return OPAQUE_BLOCKS.has(item.kind) || item.kind === 'mermaid' || (item.kind === 'math' && item.source.includes('\n')) }
 
@@ -70,10 +69,6 @@ export function editOpaqueWithPrompts(item: OpaqueConstruct, prompt: OpaquePromp
   if (item.kind === 'raw_inline') {
     const match = /^`([\s\S]*)`\{=([^}]+)\}$/.exec(item.source)
     if (match) { const value = prompt('Raw value', match[1]!); if (value === null) return null; const format = prompt('Raw format', match[2]!); return format === null ? null : `\`${value}\`{=${format}}` }
-  }
-  if (item.kind === 'substitution') {
-    const halves = substitutionHalves(item.source)
-    if (halves) { const old = prompt('Original text', halves.old); if (old === null) return null; const next = prompt('Replacement text', halves.new); return next === null ? null : `{~${old}~>${next}~}` }
   }
   const critic: Record<string, [string, string, string]> = { insert: ['Inserted text', '{+', '+}'], delete: ['Deleted text', '{-', '-}'], critic_comment: ['Review comment', '{#', '#}'], comment: ['Comment', '{%', '%}'] }
   const criticShape = critic[item.kind]

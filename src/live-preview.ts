@@ -1,7 +1,6 @@
 import { type MappedNode as EditorMappedNode, mappedNodes } from './engine.js'
 import { EditorSelection, EditorState, type Extension, Prec, type SelectionRange, StateEffect, StateField, type Transaction, type TransactionSpec } from '@codemirror/state'
 import { type Command, Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType, keymap } from '@codemirror/view'
-import { substitutionBounds } from './substitution.js'
 import { openFenceBefore } from './fences.js'
 
 export type LivePresentation =
@@ -375,15 +374,6 @@ export function livePresentations(
       presentations.push({ kind: 'hide', from: node.start, to: content.start })
       presentations.push({ kind: 'mark', from: content.start, to: content.end, className: node.type === 'insert' ? 'carve-live-insert' : 'carve-live-delete' })
       presentations.push({ kind: 'hide', from: content.end, to: node.end })
-      continue
-    }
-    if (node.type === 'substitution') {
-      const { oldStart, oldEnd, newStart, newEnd } = substitutionBounds(nodes, node)
-      presentations.push({ kind: 'hide', from: node.start, to: oldStart })
-      presentations.push({ kind: 'mark', from: oldStart, to: oldEnd, className: 'carve-live-delete' })
-      presentations.push({ kind: 'hide', from: oldEnd, to: newStart })
-      presentations.push({ kind: 'mark', from: newStart, to: newEnd, className: 'carve-live-insert' })
-      presentations.push({ kind: 'hide', from: newEnd, to: node.end })
       continue
     }
     if (node.type === 'critic_comment' && authored.startsWith('{#') && authored.endsWith('#}')) {
