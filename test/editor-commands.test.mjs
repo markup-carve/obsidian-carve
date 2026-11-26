@@ -161,8 +161,8 @@ test('source Enter continues bullets, numbering, and task state', () => {
   assert.equal(apply('- [x] done', listContinuationEdit('- [x] done', 0, 10, 10).changes), '- [x] done\n- [ ] ')
   assert.equal(apply('- [>] later', listContinuationEdit('- [>] later', 0, 11, 11).changes), '- [>] later\n- [ ] ')
   assert.equal(apply('a.  x', listContinuationEdit('a.  x', 0, 5, 5).changes), 'a.  x\nb.  ')
-  // One space after a letter or roman dot marker is paragraph text (markup-carve/carve#4828).
-  assert.equal(listContinuationEdit('a. x', 0, 4, 4), null)
+  // One space after a letter marker opens a list item in 0.2 (C2-B-036), so Enter continues it.
+  assert.equal(apply('a. x', listContinuationEdit('a. x', 0, 4, 4).changes), 'a. x\nb.  ')
   assert.equal(apply('iv) x', listContinuationEdit('iv) x', 0, 5, 5).changes), 'iv) x\nv)  ')
   assert.equal(apply('. x', listContinuationEdit('. x', 0, 3, 3).changes), '. x\n. ')
   // carve-lsp ends a list from an empty item and leaves the caret on the next line.

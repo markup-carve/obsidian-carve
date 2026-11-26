@@ -6,7 +6,7 @@ const window = new Window()
 Object.assign(globalThis, { document: window.document, Element: window.Element, HTMLLIElement: window.HTMLLIElement, HTMLInputElement: window.HTMLInputElement })
 const { applyVisualInputRule, backspaceVisualListItem, normalizeVisualTaskCaret, visualTaskCaretKey, continueVisualList, formatVisualBlock, indentVisualListItem, insertFormattedText, insertPlainText, insertSanitizedHtml, insertVisualLink, toggleVisualList, toggleVisualTask, toggleVisualTaskAtSelection, wrapVisualSelection } = await import('../dist-test/visual-editing.js')
 const { sourceToVisualDocument, visualHtmlToSource } = await import('../dist-test/wysiwyg.js')
-const { carveToHtml } = await import('@markup-carve/carve')
+const { render: carveToHtml } = await import('@markup-carve/carve')
 
 function selectTextNode(element, offset) {
   const range = document.createRange(); range.setStart(element.firstChild, offset); range.collapse(true)
@@ -322,7 +322,8 @@ test('Backspace on a nested task leaves a paragraph inside the parent item', () 
   const child = surface.querySelectorAll('li')[1]
   assert.equal(backspaceVisualListItem(surface, caretAt(child.childNodes[1], 0)), true)
   const source = visualHtmlToSource(surface.innerHTML).source
-  assert.match(carveToHtml(source), /<li>\s*<p>a<\/p>\s*<p>child<\/p>\s*<\/li>/, source)
+  // A list with one item is tight in 0.2, so `a` stays bare (C2-B-062).
+  assert.match(carveToHtml(source), /<li>a\s*<p>child<\/p>\s*<\/li>/, source)
 })
 
 test('Backspace on an empty task ends the list, as Enter does', () => {

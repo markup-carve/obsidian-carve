@@ -10,7 +10,7 @@
  * Carve returns the author's document), so this is a separate, named action
  * rather than a target.
  */
-import { renderCarve as writeCarve } from '@markup-carve/carve'
+import { write, type DocumentNode } from '@markup-carve/carve'
 import { directoryOf, expandForPreview, type IncludeDiagnostic, type PreviewExpansionOptions } from './includes.js'
 import { withCrvExtension } from './metadata.js'
 
@@ -127,7 +127,7 @@ export async function flattenDocument(source: string, options: PreviewExpansionO
   const expansion = await expandForPreview(source, { ...options, rewriteWiki: false })
   const wikilinks = rebaseChildWikilinks(expansion.doc, options.sourcePath, (path) => options.gateway.mtime(path) !== null)
   return {
-    text: writeCarve(expansion.doc),
+    text: write(spliceIncludes(expansion.doc)),
     diagnostics: expansion.diagnostics,
     suppressed: expansion.suppressed,
     renamed: expansion.diagnostics.filter((diagnostic) => RENAME_RULES.includes(diagnostic.rule)).length,
@@ -135,6 +135,39 @@ export async function flattenDocument(source: string, options: PreviewExpansionO
     rebased: wikilinks.rebased,
     ambiguous: wikilinks.ambiguous,
   }
+}
+
+type TreeNode = { type: string; children?: TreeNode[] } & Record<string, unknown>
+
+function spliced(nodes: readonly TreeNode[]): TreeNode[] {
+  const result: TreeNode[] = []
+  for (const node of nodes) {
+    // An include that was not read has no children and stays its directive.
+    if (node.type === 'include' && node.children !== undefined) result.push(...spliced(node.children.filter((child) => child.type !== 'frontmatter')))
+    else result.push(withSplicedSlots(node))
+  }
+  return result
+}
+
+function withSplicedSlots(node: TreeNode): TreeNode {
+  let copy: TreeNode | undefined
+  for (const [key, value] of Object.entries(node)) {
+    if (!Array.isArray(value) || !value.some((item) => typeof item === 'object' && item !== null && 'type' in item)) continue
+    copy ??= { ...node }
+    copy[key] = spliced(value as TreeNode[])
+  }
+  return copy ?? node
+}
+
+/**
+ * The expanded tree with each include node replaced by its children, which
+ * `write` then spells as one file. The 0.2 writer keeps an include node as its
+ * directive (C2-N-005); this is the splice `carve flatten` performs.
+ */
+export function spliceIncludes(document: DocumentNode): DocumentNode {
+  const tree = { ...document, children: spliced(document.children as unknown as TreeNode[]) } as unknown as DocumentNode
+  delete (tree as { stages?: unknown }).stages
+  return tree
 }
 
 /**

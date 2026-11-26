@@ -12,7 +12,7 @@
     "syntax-palette:check": "node scripts/sync-syntax-palette.mjs --check",
     "dev": "node esbuild.config.mjs",
     "test": "npm run build:test && node --test",
-    "build:test": "esbuild src/metadata.ts src/render.ts src/includes.ts src/flatten.ts src/bundle.ts src/include-navigation.ts src/substitution.ts src/wysiwyg.ts src/visual-table.ts src/visual-editing.ts src/visual-history.ts src/live-preview.ts src/editor-commands.ts src/preview-hold.ts src/clipboard.ts src/highlight.ts src/syntax.ts src/offsets.ts src/fences.ts --platform=node --format=esm --outdir=dist-test",
+    "build:test": "esbuild src/engine.ts src/metadata.ts src/render.ts src/includes.ts src/flatten.ts src/bundle.ts src/include-navigation.ts src/wysiwyg.ts src/visual-table.ts src/visual-editing.ts src/visual-history.ts src/live-preview.ts src/editor-commands.ts src/preview-hold.ts src/clipboard.ts src/highlight.ts src/syntax.ts src/offsets.ts src/fences.ts --platform=node --format=esm --outdir=dist-test",
     "typecheck": "tsc --noEmit",
     "test:all": "npm run syntax-palette:check && npm test && npm run typecheck && npm run build"
   },
@@ -21,9 +21,9 @@
     "@codemirror/lint": "6.9.5",
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.13",
-    "@markup-carve/carve": "0.1.17",
-    "@markup-carve/carve-grammars": "0.1.23",
-    "@markup-carve/carve-lsp": "0.1.17",
+    "@markup-carve/carve": "github:markup-carve/carve-js#fb2718493f3bcb70b4a26d05ae2ee084ec978552",
+    "@markup-carve/carve-grammars": "github:markup-carve/carve-grammars#31215996ebba0cad12d958275ba87fad1d99991a",
+    "@markup-carve/carve-lsp": "github:markup-carve/carve-lsp#9bdefb1ec81fa38d708d8f56f0938997f53f5c27",
     "codemirror": "^6.0.2",
     "smol-toml": "1.8.0",
     "yaml": "^2.9.0"
@@ -38,6 +38,6 @@
     "typescript": "^5.9.0"
   },
   "overrides": {
-    "@markup-carve/carve": "$@markup-carve/carve"
+    "@markup-carve/carve": "github:markup-carve/carve-js#fb2718493f3bcb70b4a26d05ae2ee084ec978552"
   }
 }

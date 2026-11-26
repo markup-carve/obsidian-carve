@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, next2]
   pull_request:
-    branches: [main]
+    branches: [main, next2]
 # Every job below carries a timeout-minutes bound. Without one a job inherits
 # GitHub's 360-minute default, and a stalled step can burn hours unnoticed.
 jobs:

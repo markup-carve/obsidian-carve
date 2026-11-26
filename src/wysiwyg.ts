@@ -1,7 +1,7 @@
-import { carveToAstJson, createEditorSession, htmlToCarve, parse } from '@markup-carve/carve'
-import { codepointToUtf16 } from './offsets.js'
+import { encodeTree, importDocument, parse } from '@markup-carve/carve'
+import { byteToUtf16, mappedNodes } from './engine.js'
+import { frontmatterOf } from './metadata.js'
 import { renderCarve } from './render.js'
-import { substitutionHalves } from './substitution.js'
 
 export interface VisualDocument {
   frontmatter: string
@@ -16,7 +16,7 @@ export interface VisualDocument {
 
 export interface OpaqueConstruct { token: string; source: string; label: string; kind: string }
 
-const OPAQUE_TYPES = new Set(['admonition', 'div', 'line_block', 'footnote', 'footnote_ref', 'inline_footnote', 'abbreviation_def', 'abbreviation', 'comment', 'insert', 'delete', 'substitution', 'critic_comment', 'raw_inline', 'tag', 'mention', 'math'])
+const OPAQUE_TYPES = new Set(['admonition', 'div', 'line_block', 'footnote', 'footnote_ref', 'inline_footnote', 'abbreviation_def', 'abbreviation', 'comment', 'insert', 'delete', 'critic_comment', 'raw_inline', 'tag', 'mention', 'math'])
 const OPAQUE_BLOCKS = new Set(['admonition', 'div', 'line_block', 'footnote', 'abbreviation_def'])
 export function opaqueBlock(item: Pick<OpaqueConstruct, 'kind' | 'source'>): boolean { return OPAQUE_BLOCKS.has(item.kind) || item.kind === 'mermaid' || (item.kind === 'math' && item.source.includes('\n')) }
 
@@ -70,10 +70,6 @@ export function editOpaqueWithPrompts(item: OpaqueConstruct, prompt: OpaquePromp
     const match = /^`([\s\S]*)`\{=([^}]+)\}$/.exec(item.source)
     if (match) { const value = prompt('Raw value', match[1]!); if (value === null) return null; const format = prompt('Raw format', match[2]!); return format === null ? null : `\`${value}\`{=${format}}` }
   }
-  if (item.kind === 'substitution') {
-    const halves = substitutionHalves(item.source)
-    if (halves) { const old = prompt('Original text', halves.old); if (old === null) return null; const next = prompt('Replacement text', halves.new); return next === null ? null : `{~${old}~>${next}~}` }
-  }
   const critic: Record<string, [string, string, string]> = { insert: ['Inserted text', '{+', '+}'], delete: ['Deleted text', '{-', '-}'], critic_comment: ['Review comment', '{#', '#}'], comment: ['Comment', '{%', '%}'] }
   const criticShape = critic[item.kind]
   if (criticShape && item.source.startsWith(criticShape[1]) && item.source.endsWith(criticShape[2])) return one(criticShape[0], item.source.slice(2, -2), (value) => `${criticShape[1]}${value}${criticShape[2]}`)
@@ -99,12 +95,12 @@ export function renderOpaqueConstruct(item: OpaqueConstruct): string {
 }
 
 function protectAdvanced(source: string): { source: string; opaque: OpaqueConstruct[] } {
-  const nodes = createEditorSession(source).snapshot().nodes
-  const candidates: Array<{ start: number; end: number; type: string }> = []
+  const nodes = mappedNodes(source)
+  const candidates: Array<{ start: number; end: number; type: string; block?: true }> = []
   for (const node of nodes) {
     if (node.type && OPAQUE_TYPES.has(node.type)) candidates.push({ start: node.start, end: node.end, type: node.type })
     if (node.type === 'code_block' && /^`{3,}[ \t]*mermaid\b/i.test(source.slice(node.start, node.end))) candidates.push({ start: node.start, end: node.end, type: 'mermaid' })
-    for (const token of node.tokens) if (token.role === 'attribute') candidates.push({ start: token.start, end: token.end, type: 'attributes' })
+    for (const token of node.tokens) if (token.role === 'attribute') candidates.push({ start: token.start, end: token.end, type: 'attributes', ...(token.block ? { block: true as const } : {}) })
     if (node.type === 'text') for (const match of source.slice(node.start, node.end).matchAll(/!?\[\[[^\]]+\]\]/g)) candidates.push({ start: node.start + match.index!, end: node.start + match.index! + match[0].length, type: match[0].startsWith('!') ? 'embed' : 'wikilink' })
   }
   candidates.sort((a, b) => a.start - b.start || b.end - a.end)
@@ -123,7 +119,9 @@ function protectAdvanced(source: string): { source: string; opaque: OpaqueConstr
   let protectedSource = source
   for (let index = selected.length - 1; index >= 0; index--) {
     const authored = opaque[index]!.source
-    protectedSource = protectedSource.slice(0, selected[index]!.start) + opaque[index]!.token + (authored.endsWith('\n') ? '\n' : '') + protectedSource.slice(selected[index]!.end)
+    // A block attribute token stands alone: in 0.2 a heading or quote line directly below text continues it (U-001).
+    const after = authored.endsWith('\n') ? '\n' : selected[index]!.block ? '\n' : ''
+    protectedSource = protectedSource.slice(0, selected[index]!.start) + opaque[index]!.token + after + protectedSource.slice(selected[index]!.end)
   }
   return { source: protectedSource, opaque }
 }
@@ -144,15 +142,15 @@ function semanticJson(source: string): string | null {
     const nodeType = 'type' in value ? value.type : undefined
     return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'pos' && key !== 'srcByteLength' && !(nodeType === 'thematic_break' && key === 'marker')).map(([key, child]) => [key, clean(child)]))
   }
-  try { return JSON.stringify(clean(carveToAstJson(source))) } catch { return null }
+  try { return JSON.stringify(clean(JSON.parse(encodeTree(parse(source))))) } catch { return null }
 }
 
 function splitFrontmatter(source: string): { frontmatter: string; body: string } {
   // The engine decides which openers and closers count, so the split matches the reading view.
   if (!source.startsWith('---')) return { frontmatter: '', body: source }
-  const end = parse(source, { positions: true }).frontmatter?.pos?.endOffset
+  const end = frontmatterOf(parse(source, { positions: true }))?.pos?.endOffset
   if (end === undefined) return { frontmatter: '', body: source }
-  const at = codepointToUtf16(source)(end)
+  const at = byteToUtf16(source)(end)
   const split = at + (/^(?:\r\n?|\n)/.exec(source.slice(at))?.[0].length ?? 0)
   return { frontmatter: source.slice(0, split), body: source.slice(split) }
 }
@@ -180,13 +178,13 @@ function freshToken(base: string, ...texts: string[]): string {
 function renderWithPendingTasks(source: string): string {
   // Skip the extra parse unless some line could be one.
   if (!/^[ \t>]*[-*] [ \t]*\[[ xX_>?/!-]\][ \t]*$/m.test(source)) return renderCarve(source)
-  const nodes = createEditorSession(source).snapshot().nodes
+  const nodes = mappedNodes(source)
   const token = freshToken('CARVEPENDINGTASKX9F3A', source)
   const childrenOf = new Map<string, typeof nodes[number][]>()
   const itemsOf = new Map<string, typeof nodes[number][]>()
   for (const node of nodes) {
     if (node.type === 'list_item') {
-      const list = /^(.*)\/items\/\d+$/.exec(node.path)?.[1]
+      const list = /^(.*)\/children\/\d+$/.exec(node.path)?.[1]
       if (list) {
         const siblings = itemsOf.get(list) ?? []
         siblings.push(node)
@@ -204,12 +202,14 @@ function renderWithPendingTasks(source: string): string {
     const children = childrenOf.get(node.path) ?? []
     const content = children[0]
     if (content?.type !== 'paragraph' || content.start <= node.start || children.some((child) => child !== content && child.type !== 'list')) continue
-    if (/^[-*] [ \t]*$/.test(source.slice(node.start, content.start)) && /^\[[ xX_>?/!-]\]$/.test(source.slice(content.start, content.end))) {
-      const list = /^(.*)\/items\/\d+$/.exec(node.path)?.[1]
+    // A 0.2 paragraph range keeps the item's trailing blanks.
+    const box = source.slice(content.start, content.end).replace(/[ \t]+$/, '')
+    if (/^[-*] [ \t]*$/.test(source.slice(node.start, content.start)) && /^\[[ xX_>?/!-]\]$/.test(box)) {
+      const list = /^(.*)\/children\/\d+$/.exec(node.path)?.[1]
       const siblings = list ? itemsOf.get(list) ?? [] : []
       // Promoting one pending item in a mixed list splits its HTML into two
       // lists. The round trip then inserts a blank line and locks visual mode.
-      if (siblings.every((item) => /^[-*] [ \t]*\[[ xX_>?/!-]\]/.test(source.slice(item.start, item.end)))) at.push(content.end)
+      if (siblings.every((item) => /^[-*] [ \t]*\[[ xX_>?/!-]\]/.test(source.slice(item.start, item.end)))) at.push(content.start + box.length)
     }
   }
   if (!at.length) return renderCarve(source)
@@ -218,15 +218,23 @@ function renderWithPendingTasks(source: string): string {
   return renderCarve(marked).split(`aria-label="${token}"`).join('aria-label="Toggle task"').split(` ${token}`).join(' <br data-carve-placeholder>').split(token).join('')
 }
 
-/** Like the engine's `htmlToCarve`, but an empty task item stays `- [ ] ` instead of `- [ ] +` or a hard break. */
-function visualHtmlToCarve(html: string): ReturnType<typeof htmlToCarve> {
+interface HtmlConversion { value: string; report: { diagnostics: unknown[] } }
+
+/** The HTML importer with raw HTML off, the 0.2 spelling of 0.1's safe mode. */
+function htmlToCarve(html: string): HtmlConversion {
+  const imported = importDocument(html, { from: 'html', rawHtml: false })
+  return { value: imported.source, report: { diagnostics: imported.diagnostics } }
+}
+
+/** Like the engine's HTML importer, but an empty task item stays `- [ ] ` instead of a hard break. */
+function visualHtmlToCarve(html: string): HtmlConversion {
   const token = freshToken('CARVEEMPTYTASKX9F3A', html)
   let found = false
   // Attribute values can hold `>` (`data-task-state=">"`), so tags are matched quote-aware.
   const attributes = String.raw`(?:[^>"']|"[^"]*"|'[^']*')*`
   const emptyTask = new RegExp(String.raw`(<li\b${attributes}>\s*<input\b${attributes}\btype="checkbox"${attributes}>)(?:\s|&nbsp;|<br\b${attributes}>)*(?=<\/li>|<ul\b|<ol\b)`, 'gi')
   const marked = html.replace(emptyTask, (_whole, open: string) => { found = true; return `${open} ${token}` })
-  const converted = htmlToCarve(marked, { mode: 'safe' })
+  const converted = htmlToCarve(marked)
   return found ? { ...converted, value: converted.value.split(token).join('') } : converted
 }
 

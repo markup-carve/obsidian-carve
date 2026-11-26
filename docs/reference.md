@@ -41,7 +41,8 @@ Use the book, pencil, and columns icons in the view header, or the matching
 Visual mode tests WYSIWYG behavior in detail: headings, paragraphs, emphasis,
 links, quotes, lists, paste, selection, and undo work directly in the rendered
 surface. Typing `### `, a list marker, or `> ` at the start of a paragraph
-immediately creates the corresponding rendered block. Frontmatter bytes remain outside the editable DOM, conversion
+immediately creates the corresponding rendered block. Saving writes canonical
+Carve 0.2, so a `#` heading comes back as an `=` heading. Frontmatter bytes remain outside the editable DOM, conversion
 warnings are visible, and **Revert source** discards the whole visual session.
 Advanced constructs remain lossless through protected rendered nodes.
 
@@ -54,7 +55,7 @@ Advanced constructs remain lossless through protected rendered nodes.
 | YAML, TOML, or JSON frontmatter | Kept byte-for-byte outside the editable surface |
 | Tables | Editable, then written in Carve's canonical table spelling |
 | Code blocks | Editable and round-tripped losslessly, including their trailing lines |
-| Wikilinks, embeds, tags, admonitions, footnotes, comments, CriticMarkup, raw inline, abbreviations, and custom attributes | Rendered in place and preserved byte-for-byte while surrounding content remains editable; double-click or press Enter for structured/exact editing |
+| Wikilinks, embeds, tags, admonitions, footnotes, comments, CriticMarkup, raw inline, abbreviations, and custom attributes, attribute lines above blocks included | Rendered in place and preserved byte-for-byte while surrounding content remains editable; double-click or press Enter for structured/exact editing |
 | Math and Mermaid | Rendered in the visual surface by Obsidian while their Carve source remains byte-exact |
 | Raw HTML | Remains disabled on the vault rendering path |
 
@@ -250,10 +251,9 @@ is visible in the result:
   wrote is left alone in one respect that matters here: wiki syntax is not
   rewritten into Carve links, so a flattened document can be edited on in
   Obsidian.
-- **Colliding ids are renamed.** An explicit heading id or footnote label a
-  child shares with the parent is suffixed (`intro-2`, spec I5) so the
-  flattened file renders exactly like the expanded original. The count is
-  reported rather than left to be found in a published page.
+- **Colliding ids are kept.** Carve 0.2 renames no ids, so an explicit heading
+  id or footnote label a child shares with the parent stays in both places,
+  as it does in the expanded original.
 - **A child's wikilinks are respelled from the vault root.** `[[Sibling]]`
   written in `book/sub/child.crv` names `book/sub/Sibling`; sitting in
   `book/root.flat.crv` the same text reads as `book/Sibling`. It becomes
