@@ -2,13 +2,19 @@
 
 ## Unreleased
 
+## 0.2.0
+
+The plugin reads, previews and edits vault documents as Carve 0.2.
+
 ### Breaking
 
-- The plugin runs on Carve 0.2: carve-js, carve-grammars and carve-lsp are pinned to their `next2` commits. Vault documents are read as Carve 0.2 reads them; `spec/0.2/UPGRADING.md` in the Carve repository lists the changes.
-- An include directive inside a sentence is text in Carve 0.2, so the reading view no longer expands it and the editor no longer offers to open it.
-- Flattening keeps an id that two files define in both places, since Carve 0.2 renames no colliding ids.
-- Visual mode saves canonical Carve 0.2: a `#` heading is written as an `=` heading.
-- Live Preview styles `=` headings, 0.2 table rows, image captions and attribute lines above blocks, and a substitution `{~old~>new~}` shows as a strike, as Carve 0.2 reads it.
+- The plugin runs on Carve 0.2 through carve-js, carve-grammars and carve-lsp 0.2. Vault documents are read as Carve 0.2 reads them; `spec/0.2/UPGRADING.md` in the Carve repository lists the changes (#105, #107).
+- An include directive inside a sentence is text in Carve 0.2, so the reading view no longer expands it and the editor no longer offers to open it (#105).
+- Flattening keeps an id that two files define in both places, since Carve 0.2 renames no colliding ids (#105).
+- Visual mode saves canonical Carve 0.2: a `#` heading is written as an `=` heading (#105).
+- Live Preview styles `=` headings, 0.2 table rows, image captions and attribute lines above blocks, and a substitution `{~old~>new~}` shows as a delete followed by an insert, as Carve 0.2 reads it (#105, #115).
+
+**Full Changelog**: https://github.com/markup-carve/obsidian-carve/compare/0.1.7...0.2.0
 
 ## 0.1.7
 
